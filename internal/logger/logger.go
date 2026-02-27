@@ -33,19 +33,19 @@ func Info(format string, a ...any) {
 // Success prints a success message
 func Success(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
-	fmt.Println(ui.Success("✅ " + msg))
+	fmt.Println(ui.Success(msg))
 }
 
 // Error prints an error message
 func Error(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
-	fmt.Fprintln(os.Stderr, ui.Error("❌ Error: "+msg))
+	fmt.Fprintln(os.Stderr, ui.Error(msg))
 }
 
 // Warn prints a warning message
 func Warn(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
-	fmt.Fprintln(os.Stderr, ui.Warning("⚠️ Warn: "+msg))
+	fmt.Fprintln(os.Stderr, ui.Warning(msg))
 }
 
 // Debug logs a debug message using slog if DebugMode is true

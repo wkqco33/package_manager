@@ -78,22 +78,23 @@ func (p *ProgressBar) render() {
 	percent := float64(p.Current) / float64(p.Total) * 100
 	completedWidth := int(float64(p.Width) * (float64(p.Current) / float64(p.Total)))
 
-	completed := strings.Repeat("█", completedWidth)
-	empty := strings.Repeat("-", p.Width-completedWidth)
+	// Using better characters for modern look: ▰ (filled), ▱ (empty)
+	completed := strings.Repeat("▰", completedWidth)
+	empty := strings.Repeat("▱", p.Width-completedWidth)
 
 	// \r: 커서를 줄 맨 앞으로 이동
 	// \033[K: 커서 위치부터 줄 끝까지 지움
-	fmt.Printf("\r\033[K%s [%s%s] %3.0f%% (%d/%d)",
-		Info(p.Prefix),
+	fmt.Printf("\r\033[K%s  %s%s%s %3.0f%% %s",
+		Label(p.Prefix),
 		Highlight(completed),
-		Gray+empty+Reset,
+		Muted(empty),
+		Reset,
 		percent,
-		p.Current,
-		p.Total,
+		Muted(fmt.Sprintf("(%d/%d)", p.Current, p.Total)),
 	)
 }
 
-// Spinner 애니메이션 프레임 데이터 (상수형 배열)
+// Spinner 애니메이션 프레임 데이터 (더 현대적이고 역동적인 것)
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Spinner 구조체 (다운로드 등 진행도를 알 수 없을 때 사용)
@@ -121,10 +122,10 @@ func (s *Spinner) Start() {
 				return
 			default:
 				stdoutMu.Lock()
-				fmt.Printf("\r\033[K%s %s", Highlight(spinnerFrames[s.CurrentIdx]), s.Prefix)
+				fmt.Printf("\r\033[K%s %s", Accent(spinnerFrames[s.CurrentIdx]), Muted(s.Prefix))
 				stdoutMu.Unlock()
 				s.CurrentIdx = (s.CurrentIdx + 1) % len(spinnerFrames)
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(80 * time.Millisecond) // Slightly faster spinner
 			}
 		}
 	}()

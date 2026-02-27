@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"ppm/internal/apperr"
 	"ppm/internal/logger"
+	"ppm/internal/ui"
 
 	"github.com/spf13/cobra"
 )
@@ -34,16 +36,20 @@ var listCmd = &cobra.Command{
 		}
 
 		count := 0
-		logger.Info("Installed packages:")
+		logger.Info("설치된 패키지 목록:")
 		for _, e := range entries {
 			if e.IsDir() {
-				logger.Info(" - %s", e.Name())
+				// Display package with a box icon and label
+				fmt.Printf("  %s %s\n", ui.Highlight("📦"), ui.Label(e.Name()))
 				count++
 			}
 		}
 
 		if count == 0 {
-			logger.Info("No packages installed yet.")
+			logger.Info("설치된 패키지가 없습니다.")
+		} else {
+			fmt.Println()
+			logger.Success(fmt.Sprintf("총 %d개의 패키지가 설치되어 있습니다.", count))
 		}
 	},
 }

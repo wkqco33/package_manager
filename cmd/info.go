@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -8,6 +9,7 @@ import (
 	"ppm/internal/config"
 	"ppm/internal/logger"
 	"ppm/internal/registry"
+	"ppm/internal/ui"
 )
 
 // infoCmd represents the info command
@@ -30,25 +32,35 @@ var infoCmd = &cobra.Command{
 			URL:   cfg.RegistryURL,
 		}
 
-		logger.Info("Fetching metadata for %s...", pkgName)
+		spinner := ui.NewSpinner(fmt.Sprintf("Fetching metadata for %s...", pkgName))
+		spinner.Start()
 		p, err := fetcher.GetMetadata(pkgName)
+		spinner.Stop()
+
 		if err != nil {
 			logger.Error("Failed to get metadata: %v", err)
 			os.Exit(1)
 		}
 
-		logger.Info("Package: %s", p.Name)
-		logger.Info("Latest Version: %s", p.Version)
+		fmt.Println()
+		logger.Success(fmt.Sprintf("패키지 정보를 찾았습니다: %s", ui.Highlight(p.Name)))
+		fmt.Println()
+
+		fmt.Printf("  %s %-12s %s\n", ui.Highlight("📦"), ui.Label("Name"), p.Name)
+		fmt.Printf("  %s %-12s %s\n", ui.Highlight("🏷️"), ui.Label("Version"), ui.Accent(p.Version))
+
 		if p.Description != "" {
-			logger.Info("Description: %s", p.Description)
+			fmt.Printf("  %s %-12s %s\n", ui.Highlight("📝"), ui.Label("Description"), p.Description)
 		}
 		if p.Author != "" {
-			logger.Info("Author: %s", p.Author)
+			fmt.Printf("  %s %-12s %s\n", ui.Highlight("👤"), ui.Label("Author"), p.Author)
 		}
 		if p.Homepage != "" {
-			logger.Info("Homepage: %s", p.Homepage)
+			fmt.Printf("  %s %-12s %s\n", ui.Highlight("🔗"), ui.Label("Homepage"), ui.Path(p.Homepage))
 		}
-		logger.Info("Source URL: %s", p.Source)
+
+		fmt.Printf("  %s %-12s %s\n", ui.Highlight("🚀"), ui.Label("Source"), ui.Muted(p.Source))
+		fmt.Println()
 	},
 }
 
