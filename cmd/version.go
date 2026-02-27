@@ -13,8 +13,8 @@ var Version = "0.1.0"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version number of ppm",
-	Long:  `Print the version number of ppm.`,
+	Short: "ppm의 버전 번호 출력",
+	Long:  `ppm의 버전 번호를 출력합니다.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("ppm version %s %s/%s\n", Version, runtime.GOOS, runtime.GOARCH)
 	},

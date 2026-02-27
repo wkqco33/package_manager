@@ -13,8 +13,8 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "ppm",
-	Short: "ppm is a private package manager",
-	Long:  `A fast and data-centric Private Package Manager for GitHub/GitLab.`,
+	Short: "ppm은 프라이빗 패키지 매니저입니다",
+	Long:  `GitHub/GitLab을 위한 빠르고 데이터 중심적인 프라이빗 패키지 매니저입니다.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		logger.DebugMode = debugMode
 	},

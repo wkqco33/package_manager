@@ -13,8 +13,8 @@ import (
 // listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List installed packages",
-	Long:  `List all packages currently installed via ppm.`,
+	Short: "설치된 패키지 목록 표시",
+	Long:  `현재 ppm을 통해 설치된 모든 패키지의 목록을 표시합니다.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		home, err := os.UserHomeDir()
 		if err != nil {

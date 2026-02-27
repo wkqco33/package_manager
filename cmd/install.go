@@ -17,8 +17,8 @@ import (
 // installCmd represents the install command
 var installCmd = &cobra.Command{
 	Use:   "install [package...]",
-	Short: "Install private packages",
-	Long:  `Download and install one or more private packages from the configured registry in parallel. (e.g. ppm install user/repo1 user/repo2)`,
+	Short: "프라이빗 패키지 설치",
+	Long:  `설정된 레지스트리에서 하나 이상의 프라이빗 패키지를 병렬로 다운로드하고 설치합니다. (예: ppm install user/repo1 user/repo2)`,
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := config.LoadConfig()

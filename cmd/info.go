@@ -13,8 +13,8 @@ import (
 // infoCmd represents the info command
 var infoCmd = &cobra.Command{
 	Use:   "info [package]",
-	Short: "Show package information",
-	Long:  `Display detailed information about a package from the remote registry.`,
+	Short: "패키지 정보 표시",
+	Long:  `원격 레지스트리에서 패키지에 대한 상세 정보를 표시합니다.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		pkgName := args[0]
