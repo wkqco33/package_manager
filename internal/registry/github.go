@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"ppm/internal/apperr"
@@ -30,67 +31,110 @@ type ghRelease struct {
 	TarballUrl string `json:"tarball_url"`
 }
 
-// GetMetadata fetches the latest release metadata for a given GitHub repository
+// GetMetadata fetches the latest release metadata for a given GitHub repository.
+// The release API call and the optional ppm.json fetch are performed concurrently.
 func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	// pkgName assumed format: "owner/repo"
 	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest", g.URL, pkgName)
+	contentURL := fmt.Sprintf("%s/repos/%s/contents/ppm.json", g.URL, pkgName)
 
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return nil, apperr.Wrap(apperr.CodeNetwork, err, "failed to create github api request")
+	type releaseResult struct {
+		rel ghRelease
+		err error
+	}
+	type ppmMeta struct {
+		Description string `json:"description"`
+		Author      string `json:"author"`
+		Homepage    string `json:"homepage"`
+	}
+	type metaResult struct {
+		meta ppmMeta
+		err  error
 	}
 
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	if g.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+g.Token)
-	}
+	relCh := make(chan releaseResult, 1)
+	metaCh := make(chan metaResult, 1)
 
-	resp, err := defaultHTTPClient.Do(req)
-	if err != nil {
-		return nil, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github api request")
-	}
-	defer resp.Body.Close()
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-	if resp.StatusCode != http.StatusOK {
-		// Could read body to provide better error message
-		return nil, apperr.New(apperr.CodeRegistry, "failed to get release info for %s: HTTP %d", pkgName, resp.StatusCode)
-	}
+	// Goroutine 1: fetch release info
+	go func() {
+		defer wg.Done()
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			relCh <- releaseResult{err: apperr.Wrap(apperr.CodeNetwork, err, "failed to create github api request")}
+			return
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		if g.Token != "" {
+			req.Header.Set("Authorization", "Bearer "+g.Token)
+		}
+		resp, err := defaultHTTPClient.Do(req)
+		if err != nil {
+			relCh <- releaseResult{err: apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github api request")}
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			relCh <- releaseResult{err: apperr.New(apperr.CodeRegistry, "failed to get release info for %s: HTTP %d", pkgName, resp.StatusCode)}
+			return
+		}
+		var rel ghRelease
+		if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+			relCh <- releaseResult{err: apperr.Wrap(apperr.CodeRegistry, err, "failed to decode github release metadata")}
+			return
+		}
+		relCh <- releaseResult{rel: rel}
+	}()
 
-	var rel ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return nil, apperr.Wrap(apperr.CodeRegistry, err, "failed to decode github release metadata")
+	// Goroutine 2: fetch optional ppm.json (failure is non-fatal)
+	go func() {
+		defer wg.Done()
+		req, err := http.NewRequest("GET", contentURL, nil)
+		if err != nil {
+			metaCh <- metaResult{}
+			return
+		}
+		req.Header.Set("Accept", "application/vnd.github.v3.raw")
+		if g.Token != "" {
+			req.Header.Set("Authorization", "Bearer "+g.Token)
+		}
+		resp, err := defaultHTTPClient.Do(req)
+		if err != nil {
+			metaCh <- metaResult{}
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			metaCh <- metaResult{}
+			return
+		}
+		var meta ppmMeta
+		if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+			metaCh <- metaResult{}
+			return
+		}
+		metaCh <- metaResult{meta: meta}
+	}()
+
+	wg.Wait()
+
+	relRes := <-relCh
+	if relRes.err != nil {
+		return nil, relRes.err
 	}
 
 	p := &pkg.Package{
 		Name:    pkgName,
-		Version: rel.TagName,
-		Source:  rel.TarballUrl, // Prefer tarball
+		Version: relRes.rel.TagName,
+		Source:  relRes.rel.TarballUrl,
 	}
 
-	// Fetch optional ppm.json for rich metadata
-	contentURL := fmt.Sprintf("%s/repos/%s/contents/ppm.json", g.URL, pkgName)
-	contentReq, _ := http.NewRequest("GET", contentURL, nil)
-	contentReq.Header.Set("Accept", "application/vnd.github.v3.raw")
-	if g.Token != "" {
-		contentReq.Header.Set("Authorization", "Bearer "+g.Token)
-	}
-
-	contentResp, err := defaultHTTPClient.Do(contentReq)
-	if err == nil {
-		defer contentResp.Body.Close()
-		if contentResp.StatusCode == http.StatusOK {
-			var meta struct {
-				Description string `json:"description"`
-				Author      string `json:"author"`
-				Homepage    string `json:"homepage"`
-			}
-			if err := json.NewDecoder(contentResp.Body).Decode(&meta); err == nil {
-				p.Description = meta.Description
-				p.Author = meta.Author
-				p.Homepage = meta.Homepage
-			}
-		}
-	}
+	metaRes := <-metaCh
+	p.Description = metaRes.meta.Description
+	p.Author = metaRes.meta.Author
+	p.Homepage = metaRes.meta.Homepage
 
 	return p, nil
 }

@@ -4,15 +4,22 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 )
 
+// stdoutMu serializes all terminal writes to prevent garbled output during parallel installs.
+var stdoutMu sync.Mutex
+
+const renderInterval = 100 * time.Millisecond
+
 // ProgressBar 데이터 중심 구조체 (진행률 표시)
 type ProgressBar struct {
-	Total   int64
-	Current int64
-	Width   int
-	Prefix  string
+	Total      int64
+	Current    int64
+	Width      int
+	Prefix     string
+	lastRender time.Time
 }
 
 // NewProgressBar는 초기화된 상태의 ProgressBar를 반환합니다.
@@ -25,13 +32,16 @@ func NewProgressBar(total int64, width int, prefix string) *ProgressBar {
 	}
 }
 
-// Update는 진행 상황 데이터를 갱신하고 화면을 다시 그립니다.
+// Update는 진행 상황 데이터를 갱신하고, renderInterval마다 화면을 다시 그립니다.
 func (p *ProgressBar) Update(current int64) {
 	p.Current = current
 	if p.Total > 0 && p.Current > p.Total {
 		p.Current = p.Total
 	}
-	p.Render()
+	if time.Since(p.lastRender) >= renderInterval {
+		p.Render()
+		p.lastRender = time.Now()
+	}
 }
 
 // Increment는 1만큼 진행도를 올립니다.
@@ -39,16 +49,26 @@ func (p *ProgressBar) Increment() {
 	p.Update(p.Current + 1)
 }
 
-// Finish는 100% 진행으로 설정하고 줄을 바꿉니다.
+// Finish는 100% 진행으로 설정하고 줄을 바꿉니다. stdoutMu를 보유한 채 렌더와 개행을 원자적으로 처리합니다.
 func (p *ProgressBar) Finish() {
+	stdoutMu.Lock()
+	defer stdoutMu.Unlock()
 	if p.Total > 0 {
-		p.Update(p.Total)
+		p.Current = p.Total
 	}
+	p.render()
 	fmt.Println()
 }
 
-// Render는 현재 상태 데이터를 토대로 ANSI 문자를 이용해 화면에 출력합니다.
+// Render는 stdoutMu를 잡고 현재 상태를 화면에 출력합니다.
 func (p *ProgressBar) Render() {
+	stdoutMu.Lock()
+	defer stdoutMu.Unlock()
+	p.render()
+}
+
+// render는 mutex 없이 실제 출력을 수행합니다. 반드시 stdoutMu를 보유한 상태에서 호출하세요.
+func (p *ProgressBar) render() {
 	if p.Total <= 0 {
 		// 진행률을 모를 때의 출력 방식 (단순 바이트 단위 등)
 		fmt.Printf("\r\033[K%s %d bytes", Info(p.Prefix), p.Current)
@@ -100,7 +120,9 @@ func (s *Spinner) Start() {
 			case <-s.StopChan:
 				return
 			default:
+				stdoutMu.Lock()
 				fmt.Printf("\r\033[K%s %s", Highlight(spinnerFrames[s.CurrentIdx]), s.Prefix)
+				stdoutMu.Unlock()
 				s.CurrentIdx = (s.CurrentIdx + 1) % len(spinnerFrames)
 				time.Sleep(100 * time.Millisecond)
 			}
@@ -111,7 +133,9 @@ func (s *Spinner) Start() {
 // Stop은 채널을 닫아서 스피너를 멈추고 현재 줄을 지웁니다.
 func (s *Spinner) Stop() {
 	close(s.StopChan)
+	stdoutMu.Lock()
 	fmt.Print("\r\033[K")
+	stdoutMu.Unlock()
 }
 
 // ProgressReader는 io.Reader를 감싸서 읽을 때마다 ProgressBar를 업데이트하는 래퍼입니다.

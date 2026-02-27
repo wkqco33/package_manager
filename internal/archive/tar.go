@@ -2,6 +2,7 @@ package archive
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"io"
 	"os"
@@ -68,9 +69,14 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create file")
 			}
 
-			if _, err := io.Copy(outFile, tr); err != nil {
+			bw := bufio.NewWriterSize(outFile, 64*1024)
+			if _, err := io.Copy(bw, tr); err != nil {
 				outFile.Close()
 				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to write file")
+			}
+			if err := bw.Flush(); err != nil {
+				outFile.Close()
+				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to flush file")
 			}
 			outFile.Close()
 		case tar.TypeSymlink:
