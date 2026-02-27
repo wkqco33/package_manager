@@ -95,7 +95,18 @@ func (a *TarArchiver) Link(extractedDir, binName, targetLinkPath string) error {
 
 	srcFile := filepath.Join(extractedDir, binName)
 	if _, err := os.Stat(srcFile); os.IsNotExist(err) {
-		return apperr.New(apperr.CodeArchive, "executable %s not found in extracted directory %s", binName, extractedDir)
+		// GitHub source tarballs extract into a single top-level subdirectory
+		// (e.g., owner-repo-sha/). Search one level deep before giving up.
+		entries, readErr := os.ReadDir(extractedDir)
+		if readErr == nil && len(entries) == 1 && entries[0].IsDir() {
+			candidate := filepath.Join(extractedDir, entries[0].Name(), binName)
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				srcFile = candidate
+			}
+		}
+		if _, statErr := os.Stat(srcFile); os.IsNotExist(statErr) {
+			return apperr.New(apperr.CodeArchive, "executable %s not found in extracted directory %s", binName, extractedDir)
+		}
 	}
 
 	// Create symlink

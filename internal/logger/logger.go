@@ -42,6 +42,12 @@ func Error(format string, a ...any) {
 	fmt.Fprintln(os.Stderr, ui.Error("❌ Error: "+msg))
 }
 
+// Warn prints a warning message
+func Warn(format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	fmt.Fprintln(os.Stderr, ui.Warning("⚠️ Warn: "+msg))
+}
+
 // Debug logs a debug message using slog if DebugMode is true
 func Debug(msg string, args ...any) {
 	if DebugMode {

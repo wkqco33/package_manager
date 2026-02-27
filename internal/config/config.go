@@ -91,3 +91,12 @@ func GenerateDefaultConfig() error {
 	}
 	return nil
 }
+
+// GetPackagesDir returns the path to the directory where packages are extracted
+func GetPackagesDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", apperr.Wrap(apperr.CodeFileSystem, err, "could not get user home directory")
+	}
+	return filepath.Join(home, ".config", "ppm", "packages"), nil
+}
