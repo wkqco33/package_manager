@@ -25,7 +25,7 @@ var rootCmd = &cobra.Command{
 
 var debugMode bool
 
-// Execute adds all child commands to the root command and sets flags appropriately.
+// Execute는 루트 명령 실행과 하위 명령 등록을 수행합니다.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -35,11 +35,11 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&debugMode, "debug", "d", false, "Enable debug logging")
-	// Root 전역 플래그를 여기서 설정할 수 있습니다.
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/ppm/config.yaml)")
+	// 루트 전역 플래그는 여기서 설정합니다.
+	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "설정 파일 경로 (기본값: $HOME/.config/ppm/config.yaml)")
 }
 
-// PrintError nicely formats and prints an error, leveraging AppError if possible
+// PrintError는 가능하면 AppError 정보를 활용해 오류를 출력합니다.
 func PrintError(err error) {
 	if err == nil {
 		return

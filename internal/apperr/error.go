@@ -4,11 +4,11 @@ import (
 	"fmt"
 )
 
-// ErrorCode represents a specific type of application error
+// ErrorCode는 애플리케이션 오류 유형을 나타냅니다.
 type ErrorCode int
 
 const (
-	// Enum for error codes
+	// 오류 코드 열거형
 	CodeUnknown ErrorCode = iota
 	CodeConfig
 	CodeRegistry
@@ -37,7 +37,7 @@ func (c ErrorCode) String() string {
 	}
 }
 
-// AppError is a data-centric error structure for easy handling and logging
+// AppError는 처리와 로깅을 위한 구조화 오류입니다.
 type AppError struct {
 	Code    ErrorCode
 	Message string
@@ -55,7 +55,7 @@ func (e *AppError) Unwrap() error {
 	return e.Err
 }
 
-// New creates a new AppError without an internal wrapped error
+// New는 내부 래핑 오류 없이 AppError를 생성합니다.
 func New(code ErrorCode, format string, args ...any) *AppError {
 	return &AppError{
 		Code:    code,
@@ -63,7 +63,7 @@ func New(code ErrorCode, format string, args ...any) *AppError {
 	}
 }
 
-// Wrap creates a new AppError wrapping an existing error
+// Wrap은 기존 오류를 감싸 AppError를 생성합니다.
 func Wrap(code ErrorCode, err error, format string, args ...any) *AppError {
 	return &AppError{
 		Code:    code,

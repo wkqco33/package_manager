@@ -11,7 +11,7 @@ import (
 )
 
 func TestGitHubRegistry_GetMetadata(t *testing.T) {
-	// Mock server
+	// 모의 서버
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/repos/owner/repo/releases/latest" {
 			w.Header().Set("Content-Type", "application/json")
@@ -48,7 +48,7 @@ func TestGitHubRegistry_GetMetadata(t *testing.T) {
 }
 
 func TestGitHubRegistry_DownloadSource(t *testing.T) {
-	// Mock server
+	// 모의 서버
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "mock content")
 	}))

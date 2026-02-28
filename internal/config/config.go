@@ -5,11 +5,12 @@ import (
 	"path/filepath"
 
 	"ppm/internal/apperr"
+	"ppm/internal/platform"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the application configuration
+// Config는 애플리케이션 설정입니다.
 type Config struct {
 	RegistryURL string `yaml:"registry_url"`
 	AuthToken   string `yaml:"auth_token"`
@@ -18,14 +19,14 @@ type Config struct {
 
 var ErrConfigNotFound = apperr.New(apperr.CodeConfig, "configuration file not found")
 
-// LoadConfig reads the config.yaml file from ~/.config/ppm
+// LoadConfig는 config.yaml을 읽습니다.
 func LoadConfig() (*Config, error) {
-	home, err := os.UserHomeDir()
+	paths, err := platform.GetPaths()
 	if err != nil {
-		return nil, apperr.Wrap(apperr.CodeFileSystem, err, "could not get user home directory")
+		return nil, apperr.Wrap(apperr.CodeFileSystem, err, "could not get platform paths")
 	}
 
-	configPath := filepath.Join(home, ".config", "ppm", "config.yaml")
+	configPath := filepath.Join(paths.ConfigDir, "config.yaml")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -39,46 +40,49 @@ func LoadConfig() (*Config, error) {
 		return nil, apperr.Wrap(apperr.CodeConfig, err, "failed to parse config.yaml")
 	}
 
-	// Set default InstallPath if empty
+	// InstallPath가 비어 있으면 기본값 설정
 	if cfg.InstallPath == "" {
-		cfg.InstallPath = filepath.Join(home, ".local", "bin")
+		cfg.InstallPath = paths.BinDir
 	}
 
 	return &cfg, nil
 }
 
-// EnsureConfigDir creates ~/.config/ppm if it doesn't exist
+// EnsureConfigDir는 설정 디렉터리가 없으면 생성합니다.
 func EnsureConfigDir() (string, error) {
-	home, err := os.UserHomeDir()
+	paths, err := platform.GetPaths()
 	if err != nil {
-		return "", apperr.Wrap(apperr.CodeFileSystem, err, "could not get user home directory")
+		return "", apperr.Wrap(apperr.CodeFileSystem, err, "could not get platform paths")
 	}
-	ppmDir := filepath.Join(home, ".config", "ppm")
-	if err := os.MkdirAll(ppmDir, 0755); err != nil {
+	if err := os.MkdirAll(paths.ConfigDir, 0755); err != nil {
 		return "", apperr.Wrap(apperr.CodeFileSystem, err, "failed to create config directory")
 	}
-	return ppmDir, nil
+	return paths.ConfigDir, nil
 }
 
-// GenerateDefaultConfig creates a default configuration file
+// GenerateDefaultConfig는 기본 설정 파일을 생성합니다.
 func GenerateDefaultConfig() error {
-	dir, err := EnsureConfigDir()
+	configDir, err := EnsureConfigDir()
 	if err != nil {
 		return err
 	}
 
-	configPath := filepath.Join(dir, "config.yaml")
+	configPath := filepath.Join(configDir, "config.yaml")
 
-	// Skip if already exists
+	// 이미 존재하면 생성하지 않음
 	if _, err := os.Stat(configPath); err == nil {
 		return apperr.New(apperr.CodeConfig, "config.yaml already exists")
 	}
 
-	home, _ := os.UserHomeDir()
+	paths, err := platform.GetPaths()
+	if err != nil {
+		return err
+	}
+
 	cfg := Config{
 		RegistryURL: "https://api.github.com",
-		AuthToken:   "", // User needs to fill this
-		InstallPath: filepath.Join(home, ".local", "bin"),
+		AuthToken:   "", // 사용자가 직접 입력
+		InstallPath: paths.BinDir,
 	}
 
 	data, err := yaml.Marshal(&cfg)
@@ -92,11 +96,11 @@ func GenerateDefaultConfig() error {
 	return nil
 }
 
-// GetPackagesDir returns the path to the directory where packages are extracted
+// GetPackagesDir는 패키지 압축 해제 디렉터리 경로를 반환합니다.
 func GetPackagesDir() (string, error) {
-	home, err := os.UserHomeDir()
+	paths, err := platform.GetPaths()
 	if err != nil {
-		return "", apperr.Wrap(apperr.CodeFileSystem, err, "could not get user home directory")
+		return "", apperr.Wrap(apperr.CodeFileSystem, err, "could not get platform paths")
 	}
-	return filepath.Join(home, ".config", "ppm", "packages"), nil
+	return paths.PackageDir, nil
 }

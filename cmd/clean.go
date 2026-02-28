@@ -16,7 +16,7 @@ var (
 	cleanAll bool
 )
 
-// cleanCmd represents the clean command
+// cleanCmd는 clean 명령입니다.
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "패키지 캐시 및 사용하지 않는 버전 삭제",
@@ -49,14 +49,14 @@ var cleanCmd = &cobra.Command{
 func performCleanAll(packagesDir, installPath string) {
 	logger.Info("모든 패키지 및 링크를 삭제합니다...")
 
-	// 1. Remove all packages
+	// 1) 모든 패키지 삭제
 	if err := os.RemoveAll(packagesDir); err != nil {
 		PrintError(apperr.Wrap(apperr.CodeFileSystem, err, "패키지 디렉토리 삭제 실패"))
 	} else {
 		logger.Success("패키지 디렉토리가 성공적으로 삭제되었습니다.")
 	}
 
-	// 2. Remove related symlinks in installPath
+	// 2) installPath의 관련 심볼릭 링크 삭제
 	entries, err := os.ReadDir(installPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -67,7 +67,7 @@ func performCleanAll(packagesDir, installPath string) {
 
 	for _, entry := range entries {
 		fullPath := filepath.Join(installPath, entry.Name())
-		// Check if it's a symlink pointing to our packagesDir
+		// packagesDir를 가리키는 심볼릭 링크인지 확인
 		linkTarget, err := os.Readlink(fullPath)
 		if err == nil {
 			if strings.Contains(linkTarget, packagesDir) {
@@ -84,7 +84,7 @@ func performCleanAll(packagesDir, installPath string) {
 func performCleanUnused(packagesDir, installPath string) {
 	logger.Info("사용하지 않는 구버전 패키지를 정리합니다...")
 
-	// 1. Find all active versions by checking symlinks in installPath
+	// 1) installPath의 심볼릭 링크를 확인해 활성 버전 수집
 	activeDirs := make(map[string]bool)
 	entries, err := os.ReadDir(installPath)
 	if err == nil {
@@ -92,10 +92,10 @@ func performCleanUnused(packagesDir, installPath string) {
 			fullPath := filepath.Join(installPath, entry.Name())
 			linkTarget, err := os.Readlink(fullPath)
 			if err == nil {
-				// If linkTarget is inside packagesDir, mark it active
+				// linkTarget이 packagesDir 내부면 활성으로 표시
 				if strings.Contains(linkTarget, packagesDir) {
-					// We need the direct subdirectory of packagesDir
-					// e.g., /home/user/.config/ppm/packages/repo-v1.0.0/repo -> /home/user/.config/ppm/packages/repo-v1.0.0
+					// packagesDir의 직계 하위 디렉터리명 추출
+					// 예: .../packages/repo-v1.0.0/repo -> .../packages/repo-v1.0.0
 					rel, err := filepath.Rel(packagesDir, linkTarget)
 					if err == nil {
 						parts := strings.Split(rel, string(os.PathSeparator))
@@ -109,7 +109,7 @@ func performCleanUnused(packagesDir, installPath string) {
 		}
 	}
 
-	// 2. Remove directories in packagesDir that are not active
+	// 2) packagesDir에서 비활성 디렉터리 삭제
 	pkgEntries, err := os.ReadDir(packagesDir)
 	if err != nil {
 		if os.IsNotExist(err) {

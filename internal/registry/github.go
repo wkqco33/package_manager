@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,29 +14,34 @@ import (
 	"ppm/internal/pkg"
 )
 
-// GitHubRegistry implements the pkg.RegistryFetcher interface for GitHub
+// GitHubRegistry는 GitHub용 pkg.RegistryFetcher 구현체입니다.
 type GitHubRegistry struct {
 	Token string
-	URL   string // default: https://api.github.com
+	URL   string // 기본값: https://api.github.com
 }
 
-// Ensure GitHubRegistry implements pkg.RegistryFetcher
+// GitHubRegistry가 pkg.RegistryFetcher를 구현하는지 확인
 var _ pkg.RegistryFetcher = (*GitHubRegistry)(nil)
 
 var defaultHTTPClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-type ghRelease struct {
-	TagName    string `json:"tag_name"`
-	Name       string `json:"name"`
-	TarballUrl string `json:"tarball_url"`
+type ghAsset struct {
+	Name               string `json:"name"`
+	BrowserDownloadUrl string `json:"browser_download_url"`
 }
 
-// GetMetadata fetches the latest release metadata for a given GitHub repository.
-// The release API call and the optional ppm.json fetch are performed concurrently.
+type ghRelease struct {
+	TagName    string    `json:"tag_name"`
+	Name       string    `json:"name"`
+	TarballUrl string    `json:"tarball_url"`
+	Assets     []ghAsset `json:"assets"`
+}
+
+// GetMetadata는 GitHub 저장소의 최신 릴리스 메타데이터를 조회합니다.
 func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
-	// pkgName assumed format: "owner/repo"
+	// pkgName 형식: "owner/repo"
 	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest", g.URL, pkgName)
 	contentURL := fmt.Sprintf("%s/repos/%s/contents/ppm.json", g.URL, pkgName)
 
@@ -58,7 +65,7 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Goroutine 1: fetch release info
+	// 고루틴 1: 릴리스 정보 조회
 	go func() {
 		defer wg.Done()
 		req, err := http.NewRequest("GET", apiURL, nil)
@@ -88,7 +95,7 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 		relCh <- releaseResult{rel: rel}
 	}()
 
-	// Goroutine 2: fetch optional ppm.json (failure is non-fatal)
+	// 고루틴 2: 선택적 ppm.json 조회
 	go func() {
 		defer wg.Done()
 		req, err := http.NewRequest("GET", contentURL, nil)
@@ -128,7 +135,12 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	p := &pkg.Package{
 		Name:    pkgName,
 		Version: relRes.rel.TagName,
-		Source:  relRes.rel.TarballUrl,
+		Source:  relRes.rel.TarballUrl, // 기본 대체 소스
+	}
+
+	// 현재 플랫폼에 맞는 최적 에셋 탐색
+	if bestAsset := g.findBestAsset(relRes.rel.Assets); bestAsset != "" {
+		p.Source = bestAsset
 	}
 
 	metaRes := <-metaCh
@@ -139,7 +151,56 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	return p, nil
 }
 
-// DownloadSource returns a reader for the source tarball
+func (g *GitHubRegistry) findBestAsset(assets []ghAsset) string {
+	osNames := []string{runtime.GOOS}
+	if runtime.GOOS == "darwin" {
+		osNames = append(osNames, "macos", "apple-darwin")
+	}
+
+	archNames := []string{runtime.GOARCH}
+	if runtime.GOARCH == "amd64" {
+		archNames = append(archNames, "x86_64", "64bit")
+	} else if runtime.GOARCH == "arm64" {
+		archNames = append(archNames, "aarch64")
+	}
+
+	for _, asset := range assets {
+		name := strings.ToLower(asset.Name)
+
+		// OS 매칭
+		osMatch := false
+		for _, osName := range osNames {
+			if strings.Contains(name, osName) {
+				osMatch = true
+				break
+			}
+		}
+		if !osMatch {
+			continue
+		}
+
+		// 아키텍처 매칭
+		archMatch := false
+		for _, archName := range archNames {
+			if strings.Contains(name, archName) {
+				archMatch = true
+				break
+			}
+		}
+		if !archMatch {
+			continue
+		}
+
+		// .tar.gz 또는 .zip 우선
+		if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".tgz") {
+			return asset.BrowserDownloadUrl
+		}
+	}
+
+	return ""
+}
+
+// DownloadSource는 소스 아카이브 리더를 반환합니다.
 func (g *GitHubRegistry) DownloadSource(p *pkg.Package) (io.ReadCloser, int64, error) {
 	req, err := http.NewRequest("GET", p.Source, nil)
 	if err != nil {

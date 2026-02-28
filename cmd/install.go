@@ -14,7 +14,7 @@ import (
 	"ppm/internal/registry"
 )
 
-// installCmd represents the install command
+// installCmd는 install 명령입니다.
 var installCmd = &cobra.Command{
 	Use:   "install [package...]",
 	Short: "프라이빗 패키지 설치",
@@ -42,9 +42,17 @@ var installCmd = &cobra.Command{
 					Token: cfg.AuthToken,
 					URL:   cfg.RegistryURL,
 				}
-				archiver := &archive.TarArchiver{}
 
-				if err := pkg.Install(name, fetcher, archiver, cfg.InstallPath); err != nil {
+				// 아카이브 타입 판별을 위해 메타데이터를 먼저 조회
+				p, err := fetcher.GetMetadata(name)
+				if err != nil {
+					errCh <- fmt.Errorf("[%s] %w", name, err)
+					return
+				}
+
+				archiver := archive.NewArchiver(p.Source)
+
+				if err := pkg.InstallWithPackage(p, fetcher, archiver, cfg.InstallPath); err != nil {
 					errCh <- fmt.Errorf("[%s] %w", name, err)
 				}
 			}(pkgName)

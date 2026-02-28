@@ -12,7 +12,7 @@ import (
 	"ppm/internal/ui"
 )
 
-// infoCmd represents the info command
+// infoCmd는 info 명령입니다.
 var infoCmd = &cobra.Command{
 	Use:   "info [package]",
 	Short: "패키지 정보 표시",
@@ -43,7 +43,7 @@ var infoCmd = &cobra.Command{
 		}
 
 		fmt.Println()
-		logger.Success(fmt.Sprintf("패키지 정보를 찾았습니다: %s", ui.Highlight(p.Name)))
+		logger.Success("%s", fmt.Sprintf("패키지 정보를 찾았습니다: %s", ui.Highlight(p.Name)))
 		fmt.Println()
 
 		fmt.Printf("  %s %-12s %s\n", ui.Highlight("📦"), ui.Label("Name"), p.Name)

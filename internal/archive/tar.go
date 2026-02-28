@@ -7,18 +7,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"ppm/internal/apperr"
 	"ppm/internal/pkg"
 )
 
-// TarArchiver implements pkg.Archiver for .tar.gz files
+// TarArchiver는 .tar.gz용 pkg.Archiver 구현체입니다.
 type TarArchiver struct{}
 
-// Ensure TarArchiver implements pkg.Archiver
+// TarArchiver가 pkg.Archiver를 구현하는지 확인
 var _ pkg.Archiver = (*TarArchiver)(nil)
 
-// Extract extracts a .tar.gz archive from a reader into destDir
+// Extract는 리더의 .tar.gz 아카이브를 destDir로 풉니다.
 func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create dest directory")
@@ -54,7 +55,7 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 				dirsCreated[target] = true
 			}
 		case tar.TypeReg:
-			// Ensure parent directory exists
+			// 상위 디렉터리 보장
 			parent := filepath.Dir(target)
 			if !dirsCreated[parent] {
 				if err := os.MkdirAll(parent, 0755); err != nil {
@@ -63,7 +64,7 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 				dirsCreated[parent] = true
 			}
 
-			// Pass the mode from the tar header
+			// tar 헤더의 모드값 사용
 			outFile, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(header.Mode))
 			if err != nil {
 				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create file")
@@ -80,28 +81,34 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 			}
 			outFile.Close()
 		case tar.TypeSymlink:
-			if err := os.Symlink(header.Linkname, target); err != nil {
-				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create symlink %s", header.Name)
+			// 유닉스 계열에서는 심볼릭 링크가 자주 사용됩니다.
+			// Windows는 제외하고 가능한 경우만 생성합니다.
+			if runtime.GOOS != "windows" {
+				if err := os.Symlink(header.Linkname, target); err != nil {
+					return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create symlink %s", header.Name)
+				}
 			}
 		}
 	}
 	return nil
 }
 
-// Link creates a symbolic link from binPath to targetDir/executable_name
+// Link는 심볼릭 링크를 만들거나 바이너리를 복사합니다.
 func (a *TarArchiver) Link(extractedDir, binName, targetLinkPath string) error {
-	// targetLinkPath is like ~/.local/bin/my-app
-	// binName is what we extracted
-
 	srcFile := filepath.Join(extractedDir, binName)
 	if _, err := os.Stat(srcFile); os.IsNotExist(err) {
-		// GitHub source tarballs extract into a single top-level subdirectory
-		// (e.g., owner-repo-sha/). Search one level deep before giving up.
+		// GitHub 소스 tarball은 최상위 하위 디렉터리로 풀리는 경우가 많음.
+		// 모든 하위 디렉터리를 한 단계 깊이까지 탐색합니다.
 		entries, readErr := os.ReadDir(extractedDir)
-		if readErr == nil && len(entries) == 1 && entries[0].IsDir() {
-			candidate := filepath.Join(extractedDir, entries[0].Name(), binName)
-			if _, statErr := os.Stat(candidate); statErr == nil {
-				srcFile = candidate
+		if readErr == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					candidate := filepath.Join(extractedDir, entry.Name(), binName)
+					if _, statErr := os.Stat(candidate); statErr == nil {
+						srcFile = candidate
+						break
+					}
+				}
 			}
 		}
 		if _, statErr := os.Stat(srcFile); os.IsNotExist(statErr) {
@@ -109,22 +116,41 @@ func (a *TarArchiver) Link(extractedDir, binName, targetLinkPath string) error {
 		}
 	}
 
-	// Create symlink
-	// If it already exists, remove it first
+	// 기존 링크/파일 제거
 	if _, err := os.Stat(targetLinkPath); err == nil {
 		os.Remove(targetLinkPath)
 	}
 
-	// Ensure target directory exists (~/.local/bin)
 	if err := os.MkdirAll(filepath.Dir(targetLinkPath), 0755); err != nil {
 		return err
 	}
 
-	// Make source executable
+	// 원본 실행 권한 부여
 	os.Chmod(srcFile, 0755)
+
+	if runtime.GOOS == "windows" {
+		return a.copyFile(srcFile, targetLinkPath)
+	}
 
 	if err := os.Symlink(srcFile, targetLinkPath); err != nil {
 		return apperr.Wrap(apperr.CodeFileSystem, err, "failed to link executable")
 	}
 	return nil
+}
+
+func (a *TarArchiver) copyFile(src, dst string) error {
+	source, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	destination, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destination.Close()
+
+	_, err = io.Copy(destination, source)
+	return err
 }

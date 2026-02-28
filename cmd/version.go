@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version defines the current version of ppm.
-// This can be overridden during the build process using -ldflags.
+// Version은 ppm의 현재 버전입니다.
+// 빌드 시 -ldflags로 덮어쓸 수 있습니다.
 var Version = "0.1.0"
 
 var versionCmd = &cobra.Command{

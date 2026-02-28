@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// stdoutMu serializes all terminal writes to prevent garbled output during parallel installs.
+// stdoutMu는 병렬 설치 시 터미널 출력이 섞이지 않도록 직렬화합니다.
 var stdoutMu sync.Mutex
 
 const renderInterval = 100 * time.Millisecond
@@ -78,7 +78,7 @@ func (p *ProgressBar) render() {
 	percent := float64(p.Current) / float64(p.Total) * 100
 	completedWidth := int(float64(p.Width) * (float64(p.Current) / float64(p.Total)))
 
-	// Using better characters for modern look: ▰ (filled), ▱ (empty)
+	// 진행 바 문자: ▰(채움), ▱(비움)
 	completed := strings.Repeat("▰", completedWidth)
 	empty := strings.Repeat("▱", p.Width-completedWidth)
 
@@ -94,7 +94,7 @@ func (p *ProgressBar) render() {
 	)
 }
 
-// Spinner 애니메이션 프레임 데이터 (더 현대적이고 역동적인 것)
+// Spinner 애니메이션 프레임
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Spinner 구조체 (다운로드 등 진행도를 알 수 없을 때 사용)
@@ -125,7 +125,7 @@ func (s *Spinner) Start() {
 				fmt.Printf("\r\033[K%s %s", Accent(spinnerFrames[s.CurrentIdx]), Muted(s.Prefix))
 				stdoutMu.Unlock()
 				s.CurrentIdx = (s.CurrentIdx + 1) % len(spinnerFrames)
-				time.Sleep(80 * time.Millisecond) // Slightly faster spinner
+				time.Sleep(80 * time.Millisecond) // 조금 빠른 스피너
 			}
 		}
 	}()
