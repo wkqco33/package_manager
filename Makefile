@@ -4,7 +4,7 @@
 BINARY_NAME=ppm
 INSTALL_DIR=$(HOME)/.local/bin
 GO_FILES=$(shell find . -name "*.go" -type f)
-VERSION=$(shell tag=$$(git describe --tags --abbrev=0 2>/dev/null || echo dev); tag=$${tag#v}; [ -n "$$tag" ] && echo $$tag || echo dev)
+VERSION=$(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
 
 # 빌드 플래그 (성능 최적화 및 바이너리 크기 감소)
 LDFLAGS=-ldflags="-s -w -X ppm/cmd.Version=$(VERSION)"
