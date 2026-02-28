@@ -28,6 +28,7 @@ var defaultHTTPClient = &http.Client{
 }
 
 type ghAsset struct {
+	Id                 int64  `json:"id"`
 	Name               string `json:"name"`
 	BrowserDownloadUrl string `json:"browser_download_url"`
 }
@@ -139,10 +140,11 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 
 	// 현재 플랫폼에 맞는 최적 에셋 탐색
 	bestAsset := g.findBestAsset(relRes.rel.Assets)
-	if bestAsset == "" {
+	if bestAsset == nil {
 		return nil, apperr.New(apperr.CodeRegistry, "현재 플랫폼(%s/%s)에 맞는 바이너리 에셋을 찾을 수 없습니다. 패키지 관리자가 릴리스에 바이너리를 업로드했는지 확인해 주세요.", runtime.GOOS, runtime.GOARCH)
 	}
-	p.Source = bestAsset
+	p.Source = bestAsset.BrowserDownloadUrl
+	p.AssetID = bestAsset.Id
 
 	metaRes := <-metaCh
 	p.Description = metaRes.meta.Description
@@ -152,7 +154,7 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	return p, nil
 }
 
-func (g *GitHubRegistry) findBestAsset(assets []ghAsset) string {
+func (g *GitHubRegistry) findBestAsset(assets []ghAsset) *ghAsset {
 	osNames := []string{runtime.GOOS}
 	if runtime.GOOS == "darwin" {
 		osNames = append(osNames, "macos", "apple-darwin")
@@ -169,7 +171,7 @@ func (g *GitHubRegistry) findBestAsset(assets []ghAsset) string {
 		forbiddenArch = []string{"amd64", "x86_64", "x86", "i386"}
 	}
 
-	var bestAsset string
+	var bestAsset *ghAsset
 	for _, asset := range assets {
 		name := strings.ToLower(asset.Name)
 
@@ -208,11 +210,11 @@ func (g *GitHubRegistry) findBestAsset(assets []ghAsset) string {
 
 		// 압축 파일(.tar.gz, .zip, .tgz)을 발견하면 즉시 반환 (우선순위 높음)
 		if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".tgz") {
-			return asset.BrowserDownloadUrl
+			return &asset
 		}
 
 		// 단일 바이너리인 경우 일단 보관하고 더 좋은(압축된) 에셋이 있는지 계속 탐색
-		bestAsset = asset.BrowserDownloadUrl
+		bestAsset = &asset
 	}
 
 	return bestAsset
@@ -220,13 +222,27 @@ func (g *GitHubRegistry) findBestAsset(assets []ghAsset) string {
 
 // DownloadSource는 소스 아카이브 리더를 반환합니다.
 func (g *GitHubRegistry) DownloadSource(p *pkg.Package) (io.ReadCloser, int64, error) {
-	req, err := http.NewRequest("GET", p.Source, nil)
+	downloadURL := p.Source
+
+	// 프라이빗 저장소의 릴리스 에셋인 경우 전용 API URL 사용
+	if p.AssetID > 0 {
+		// p.Source가 "https://github.com/owner/repo/releases/download/v1.0.0/asset.zip" 형태라면
+		// 이를 "https://api.github.com/repos/owner/repo/releases/assets/asset_id" 형태로 변환하거나
+		// p.Name(owner/repo)을 활용하여 직접 생성합니다.
+		downloadURL = fmt.Sprintf("%s/repos/%s/releases/assets/%d", g.URL, p.Name, p.AssetID)
+	}
+
+	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
 		return nil, 0, apperr.Wrap(apperr.CodeNetwork, err, "failed to create download request")
 	}
 
 	if g.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+g.Token)
+		// 릴리스 에셋 API를 호출할 때는 이 헤더가 필수입니다.
+		if p.AssetID > 0 {
+			req.Header.Set("Accept", "application/octet-stream")
+		}
 	}
 
 	resp, err := defaultHTTPClient.Do(req)

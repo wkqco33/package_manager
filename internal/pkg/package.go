@@ -20,6 +20,7 @@ type Package struct {
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Source      string `json:"source"`
+	AssetID     int64  `json:"asset_id"` // 프라이빗 에셋 다운로드용 ID
 	Checksum    string `json:"checksum"`
 	Description string `json:"description"`
 	Author      string `json:"author"`
