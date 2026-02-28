@@ -33,18 +33,35 @@ var updateCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		installed, err := pkg.ListInstalled(packagesDir)
+		if err != nil {
+			PrintError(err)
+			os.Exit(1)
+		}
+
+		installedVersions := make(map[string]map[string]struct{})
+		for _, p := range installed {
+			if p.Name == "" || p.Version == "" {
+				continue
+			}
+			if _, ok := installedVersions[p.Name]; !ok {
+				installedVersions[p.Name] = make(map[string]struct{})
+			}
+			installedVersions[p.Name][p.Version] = struct{}{}
+		}
+
 		var targetPackages []string
 		if len(args) > 0 {
 			targetPackages = args
 		} else {
-			installed, err := pkg.ListInstalled(packagesDir)
-			if err != nil {
-				PrintError(err)
-				os.Exit(1)
-			}
+			seen := make(map[string]struct{})
 			for _, p := range installed {
 				// 전체 이름(owner/repo) 형식만 자동 업데이트
 				if strings.Contains(p.Name, "/") {
+					if _, exists := seen[p.Name]; exists {
+						continue
+					}
+					seen[p.Name] = struct{}{}
 					targetPackages = append(targetPackages, p.Name)
 				} else {
 					logger.Warn("레거시 패키지 '%s'는 자동 업데이트를 지원하지 않습니다. 'ppm install owner/repo'로 다시 설치해주세요.", p.Name)
@@ -72,10 +89,22 @@ var updateCmd = &cobra.Command{
 					Token: cfg.AuthToken,
 					URL:   cfg.RegistryURL,
 				}
-				archiver := &archive.TarArchiver{}
 
-				// TODO: 설치 전 버전 비교로 중복 다운로드 방지
-				if err := pkg.Install(name, fetcher, archiver, cfg.InstallPath); err != nil {
+				latest, err := fetcher.GetMetadata(name)
+				if err != nil {
+					errCh <- fmt.Errorf("[%s] %w", name, err)
+					return
+				}
+
+				if versions, ok := installedVersions[name]; ok {
+					if _, exists := versions[latest.Version]; exists {
+						logger.Info("%s는 이미 최신 버전(%s)입니다.", name, latest.Version)
+						return
+					}
+				}
+
+				archiver := archive.NewArchiver(latest.Source)
+				if err := pkg.InstallWithPackage(latest, fetcher, archiver, cfg.InstallPath); err != nil {
 					errCh <- fmt.Errorf("[%s] %w", name, err)
 				}
 			}(pkgName)
