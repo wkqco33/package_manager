@@ -48,7 +48,7 @@ func TestInstall(t *testing.T) {
 	// Mock HOME to a temp directory for this test
 	tempHome, _ := os.MkdirTemp("", "ppm-home-*")
 	defer os.RemoveAll(tempHome)
-	
+
 	oldHome := os.Getenv("HOME")
 	os.Setenv("HOME", tempHome)
 	defer os.Setenv("HOME", oldHome)

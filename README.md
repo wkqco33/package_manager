@@ -18,11 +18,19 @@
 
 터미널에서 아래 명령어를 실행하여 현재 환경에 맞는 최신 버전을 자동으로 설치할 수 있습니다.
 
+#### 공개 저장소 (Public Repository)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wkqco33/package_manager/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh | sh
 ```
 
-*(주의: `wkqco33/package_manager` 부분을 실제 GitHub 레포지토리 주소로 변경하여 사용하세요.)*
+#### 프라이빗 저장소 (Private Repository)
+프라이빗 저장소의 경우 GitHub Token(PAT)이 필요합니다.
+```bash
+export GITHUB_TOKEN="your_personal_access_token"
+curl -H "Authorization: token $GITHUB_TOKEN" \
+     -H "Accept: application/vnd.github.v3.raw" \
+     -fsSL https://api.github.com/repos/OWNER/REPO/contents/install.sh | sh
+```
 
 ### 로컬 빌드
 
@@ -38,10 +46,19 @@ make build-all
 
 ## 삭제 방법
 
-터미널에서 아래 명령어를 실행하여 설치된 바이너리와 모든 설정, 패키지 데이터를 시스템에서 완전히 제거할 수 있습니다.
+설치된 바이너리와 모든 설정, 패키지 데이터를 시스템에서 완전히 제거할 수 있습니다.
 
+#### 공개 저장소
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wkqco33/package_manager/main/uninstall.sh | sh
+curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/uninstall.sh | sh
+```
+
+#### 프라이빗 저장소
+```bash
+export GITHUB_TOKEN="your_personal_access_token"
+curl -H "Authorization: token $GITHUB_TOKEN" \
+     -H "Accept: application/vnd.github.v3.raw" \
+     -fsSL https://api.github.com/repos/OWNER/REPO/contents/uninstall.sh | sh
 ```
 
 ## 사용 방법
@@ -63,7 +80,7 @@ ppm init
 프라이빗 레포지토리에서 현재 시스템에 맞는 바이너리를 설치합니다.
 
 ```bash
-ppm install wkqco33/package_manager1 wkqco33/package_manager2
+ppm install owner/repo1 owner/repo2
 ```
 
 ### 3. 패키지 목록 및 정보 확인
@@ -72,7 +89,7 @@ ppm install wkqco33/package_manager1 wkqco33/package_manager2
 
 ```bash
 ppm list   # 설치된 패키지 및 버전 확인
-ppm info wkqco33/package_managersitory  # 원격 레지스트리의 패키지 상세 정보 확인
+ppm info owner/repo  # 원격 레지스트리의 패키지 상세 정보 확인
 ```
 
 ### 4. 패키지 업데이트
@@ -81,7 +98,7 @@ ppm info wkqco33/package_managersitory  # 원격 레지스트리의 패키지 �
 
 ```bash
 ppm update          # 모든 패키지 업데이트
-ppm update wkqco33/package_manager  # 특정 패키지만 업데이트
+ppm update owner/repo  # 특정 패키지만 업데이트
 ```
 
 ### 5. 패키지 삭제
@@ -89,7 +106,7 @@ ppm update wkqco33/package_manager  # 특정 패키지만 업데이트
 설치된 패키지와 바이너리를 제거합니다.
 
 ```bash
-ppm uninstall wkqco33/package_manager1 repo2
+ppm uninstall owner/repo1 repo2
 ```
 
 ## 설정 상세 (`config.yaml`)
