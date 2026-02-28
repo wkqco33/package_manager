@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -103,7 +104,8 @@ var updateCmd = &cobra.Command{
 					}
 				}
 
-				archiver := archive.NewArchiver(latest.Source)
+				safeName := filepath.Base(latest.Name)
+				archiver := archive.NewArchiver(latest.Source, safeName)
 				if err := pkg.InstallWithPackage(latest, fetcher, archiver, cfg.InstallPath); err != nil {
 					errCh <- fmt.Errorf("[%s] %w", name, err)
 				}

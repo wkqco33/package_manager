@@ -135,13 +135,14 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	p := &pkg.Package{
 		Name:    pkgName,
 		Version: relRes.rel.TagName,
-		Source:  relRes.rel.TarballUrl, // 기본 대체 소스
 	}
 
 	// 현재 플랫폼에 맞는 최적 에셋 탐색
-	if bestAsset := g.findBestAsset(relRes.rel.Assets); bestAsset != "" {
-		p.Source = bestAsset
+	bestAsset := g.findBestAsset(relRes.rel.Assets)
+	if bestAsset == "" {
+		return nil, apperr.New(apperr.CodeRegistry, "현재 플랫폼(%s/%s)에 맞는 바이너리 에셋을 찾을 수 없습니다. 패키지 관리자가 릴리스에 바이너리를 업로드했는지 확인해 주세요.", runtime.GOOS, runtime.GOARCH)
 	}
+	p.Source = bestAsset
 
 	metaRes := <-metaCh
 	p.Description = metaRes.meta.Description
@@ -158,12 +159,17 @@ func (g *GitHubRegistry) findBestAsset(assets []ghAsset) string {
 	}
 
 	archNames := []string{runtime.GOARCH}
+	var forbiddenArch []string
+
 	if runtime.GOARCH == "amd64" {
 		archNames = append(archNames, "x86_64", "64bit")
+		forbiddenArch = []string{"arm64", "aarch64", "armv"}
 	} else if runtime.GOARCH == "arm64" {
 		archNames = append(archNames, "aarch64")
+		forbiddenArch = []string{"amd64", "x86_64", "x86", "i386"}
 	}
 
+	var bestAsset string
 	for _, asset := range assets {
 		name := strings.ToLower(asset.Name)
 
@@ -187,17 +193,29 @@ func (g *GitHubRegistry) findBestAsset(assets []ghAsset) string {
 				break
 			}
 		}
+
+		// 금지된 아키텍처가 포함되어 있다면 매칭 실패로 간주 (예: arm64 환경에서 amd64가 포함된 경우)
+		for _, forbidden := range forbiddenArch {
+			if strings.Contains(name, forbidden) {
+				archMatch = false
+				break
+			}
+		}
+
 		if !archMatch {
 			continue
 		}
 
-		// .tar.gz 또는 .zip 우선
+		// 압축 파일(.tar.gz, .zip, .tgz)을 발견하면 즉시 반환 (우선순위 높음)
 		if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".tgz") {
 			return asset.BrowserDownloadUrl
 		}
+
+		// 단일 바이너리인 경우 일단 보관하고 더 좋은(압축된) 에셋이 있는지 계속 탐색
+		bestAsset = asset.BrowserDownloadUrl
 	}
 
-	return ""
+	return bestAsset
 }
 
 // DownloadSource는 소스 아카이브 리더를 반환합니다.

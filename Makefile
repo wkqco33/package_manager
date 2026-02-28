@@ -4,9 +4,10 @@
 BINARY_NAME=ppm
 INSTALL_DIR=$(HOME)/.local/bin
 GO_FILES=$(shell find . -name "*.go" -type f)
+VERSION=$(shell tag=$$(git describe --tags --abbrev=0 2>/dev/null || echo dev); tag=$${tag#v}; [ -n "$$tag" ] && echo $$tag || echo dev)
 
 # 빌드 플래그 (성능 최적화 및 바이너리 크기 감소)
-LDFLAGS=-ldflags="-s -w"
+LDFLAGS=-ldflags="-s -w -X ppm/cmd.Version=$(VERSION)"
 
 .PHONY: all build install uninstall clean test fmt lint help
 
@@ -15,11 +16,13 @@ all: build
 ## build: 최적화된 바이너리 생성 (-s -w 플래그 적용)
 build:
 	@echo "Building $(BINARY_NAME)..."
+	@echo "Version: $(VERSION)"
 	go build $(LDFLAGS) -o $(BINARY_NAME) main.go
 
 ## build-all: Linux, macOS (amd64, arm64), Windows용 바이너리 빌드
 build-all:
 	@echo "Building for multiple platforms..."
+	@echo "Version: $(VERSION)"
 	@mkdir -p dist
 	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/ppm-linux-amd64 main.go
 	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/ppm-linux-arm64 main.go
