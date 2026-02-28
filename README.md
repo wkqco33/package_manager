@@ -19,12 +19,15 @@
 터미널에서 아래 명령어를 실행하여 현재 환경에 맞는 최신 버전을 자동으로 설치할 수 있습니다.
 
 #### 공개 저장소 (Public Repository)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh | sh
 ```
 
 #### 프라이빗 저장소 (Private Repository)
+
 프라이빗 저장소의 경우 GitHub Token(PAT)이 필요합니다.
+
 ```bash
 export GITHUB_TOKEN="your_personal_access_token"
 curl -H "Authorization: token $GITHUB_TOKEN" \
@@ -48,12 +51,14 @@ make build-all
 
 설치된 바이너리와 모든 설정, 패키지 데이터를 시스템에서 완전히 제거할 수 있습니다.
 
-#### 공개 저장소
+### 공개 저장소
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/uninstall.sh | sh
 ```
 
-#### 프라이빗 저장소
+### 프라이빗 저장소
+
 ```bash
 export GITHUB_TOKEN="your_personal_access_token"
 curl -H "Authorization: token $GITHUB_TOKEN" \
