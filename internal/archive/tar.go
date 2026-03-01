@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"ppm/internal/apperr"
 	"ppm/internal/pkg"
@@ -95,25 +96,70 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 
 // Link는 심볼릭 링크를 만들거나 바이너리를 복사합니다.
 func (a *TarArchiver) Link(extractedDir, binName, targetLinkPath string) error {
-	srcFile := filepath.Join(extractedDir, binName)
-	if _, err := os.Stat(srcFile); os.IsNotExist(err) {
-		// GitHub 소스 tarball은 최상위 하위 디렉터리로 풀리는 경우가 많음.
-		// 모든 하위 디렉터리를 한 단계 깊이까지 탐색합니다.
-		entries, readErr := os.ReadDir(extractedDir)
-		if readErr == nil {
-			for _, entry := range entries {
-				if entry.IsDir() {
-					candidate := filepath.Join(extractedDir, entry.Name(), binName)
-					if _, statErr := os.Stat(candidate); statErr == nil {
-						srcFile = candidate
-						break
-					}
+	srcFile := ""
+
+	// 1. 최상위 디렉토리에서 바로 확인
+	candidate := filepath.Join(extractedDir, binName)
+	if _, err := os.Stat(candidate); err == nil {
+		srcFile = candidate
+	}
+
+	// 2. 하위 디렉토리 탐색 (최대 2단계)
+	if srcFile == "" {
+		filepath.Walk(extractedDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			// 디렉토리 깊이 제한 (extractedDir 기준 +2)
+			rel, _ := filepath.Rel(extractedDir, path)
+			depth := len(strings.Split(rel, string(os.PathSeparator)))
+			if depth > 3 {
+				return nil
+			}
+
+			if !info.IsDir() && info.Name() == binName {
+				srcFile = path
+				return filepath.SkipDir
+			}
+			return nil
+		})
+	}
+
+	// 3. 실행 파일 이름이 다를 경우를 대비해 실행 권한이 있는 파일 검색
+	if srcFile == "" {
+		filepath.Walk(extractedDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if info.IsDir() {
+				return nil
+			}
+
+			// 실행 권한 확인 (Unix-like) 또는 확장자 확인 (Windows)
+			isExec := false
+			if runtime.GOOS == "windows" {
+				isExec = strings.HasSuffix(strings.ToLower(info.Name()), ".exe")
+			} else {
+				isExec = (info.Mode() & 0111) != 0
+			}
+
+			if isExec {
+				// 우선순위: binName이 포함된 파일 > 그 외 실행 파일
+				if strings.Contains(strings.ToLower(info.Name()), strings.ToLower(binName)) {
+					srcFile = path
+					return filepath.SkipDir
+				}
+				// 아직 못 찾았다면 첫 번째 실행 파일을 후보로 등록
+				if srcFile == "" {
+					srcFile = path
 				}
 			}
-		}
-		if _, statErr := os.Stat(srcFile); os.IsNotExist(statErr) {
-			return apperr.New(apperr.CodeArchive, "executable %s not found in extracted directory %s", binName, extractedDir)
-		}
+			return nil
+		})
+	}
+
+	if srcFile == "" || srcFile == extractedDir {
+		return apperr.New(apperr.CodeArchive, "executable %s not found in extracted directory %s", binName, extractedDir)
 	}
 
 	// 기존 링크/파일 제거
