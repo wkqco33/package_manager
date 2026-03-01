@@ -121,7 +121,7 @@ func Uninstall(pkgName, installPath string) error {
 	}
 
 	safeName := filepath.Base(pkgName)
-	
+
 	// 설치된 패키지들의 메타데이터를 확인하여 BinName 파악
 	baseBinName := safeName
 	entries, err := os.ReadDir(packagesDir)
@@ -159,7 +159,7 @@ func Uninstall(pkgName, installPath string) error {
 	if err != nil && os.IsNotExist(err) && entries == nil {
 		return nil // 제거할 항목 없음
 	}
-	
+
 	// 디렉토리를 다시 읽어 삭제 진행 (위에 err == nil 일때만 entries를 구했음)
 	if entries == nil {
 		entries, err = os.ReadDir(packagesDir)
