@@ -49,6 +49,9 @@ var infoCmd = &cobra.Command{
 		fmt.Printf("  %s %-12s %s\n", ui.Highlight("📦"), ui.Label("Name"), p.Name)
 		fmt.Printf("  %s %-12s %s\n", ui.Highlight("🏷️"), ui.Label("Version"), ui.Accent(p.Version))
 
+		if p.BinName != "" {
+			fmt.Printf("  %s %-12s %s\n", ui.Highlight("⚙️ "), ui.Label("Binary"), p.BinName)
+		}
 		if p.Description != "" {
 			fmt.Printf("  %s %-12s %s\n", ui.Highlight("📝"), ui.Label("Description"), p.Description)
 		}

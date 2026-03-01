@@ -54,6 +54,7 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 		Description string `json:"description"`
 		Author      string `json:"author"`
 		Homepage    string `json:"homepage"`
+		BinName     string `json:"bin_name"`
 	}
 	type metaResult struct {
 		meta ppmMeta
@@ -150,6 +151,7 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	p.Description = metaRes.meta.Description
 	p.Author = metaRes.meta.Author
 	p.Homepage = metaRes.meta.Homepage
+	p.BinName = metaRes.meta.BinName
 
 	return p, nil
 }

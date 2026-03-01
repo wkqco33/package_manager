@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"testing"
 
 	"ppm/internal/pkg"
@@ -15,7 +16,19 @@ func TestGitHubRegistry_GetMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/repos/owner/repo/releases/latest" {
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintln(w, `{"tag_name": "v1.2.3", "tarball_url": "https://example.com/source.tar.gz"}`)
+			// 현재 실행 환경에 맞는 에셋 이름을 동적으로 생성
+			assetName := fmt.Sprintf("ppm-v1.2.3-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+			fmt.Fprintf(w, `{
+				"tag_name": "v1.2.3",
+				"tarball_url": "https://example.com/source.tar.gz",
+				"assets": [
+					{
+						"id": 1,
+						"name": "%s",
+						"browser_download_url": "https://example.com/%s"
+					}
+				]
+			}`, assetName, assetName)
 			return
 		}
 		if r.URL.Path == "/repos/owner/repo/contents/ppm.json" {

@@ -3,15 +3,14 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"ppm/internal/platform"
 	"testing"
 )
 
 func TestGenerateAndLoadConfig(t *testing.T) {
 	// 임시 HOME 디렉토리 설정
 	tmpHome := t.TempDir()
-	originalHome, _ := os.UserHomeDir()
 	t.Setenv("HOME", tmpHome) // Go 1.17+ 에서는 t.Setenv로 환경변수 안전한 조작 가능
-	defer t.Setenv("HOME", originalHome)
 
 	// 1. 설정 파일 생성 테스트
 	err := GenerateDefaultConfig()
@@ -19,9 +18,14 @@ func TestGenerateAndLoadConfig(t *testing.T) {
 		t.Fatalf("Expected nil err, got %v", err)
 	}
 
-	configPath := filepath.Join(tmpHome, ".config", "ppm", "config.yaml")
+	paths, err := platform.GetPaths()
+	if err != nil {
+		t.Fatalf("Failed to get platform paths: %v", err)
+	}
+
+	configPath := filepath.Join(paths.ConfigDir, "config.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Fatalf("Config file was not created")
+		t.Fatalf("Config file was not created at %s", configPath)
 	}
 
 	// 2. 설정 파일 파싱 테스트

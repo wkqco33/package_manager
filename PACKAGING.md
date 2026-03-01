@@ -64,13 +64,15 @@ my-tool/
 {
   "description": "이 프로젝트에 대한 짧은 설명",
   "author": "작성자 이름",
-  "homepage": "홈페이지 또는 문서 URL"
+  "homepage": "홈페이지 또는 문서 URL",
+  "bin_name": "my-tool"
 }
 ```
 
 * **설명 (description)**: `ppm info` 명령어 시 표시될 패키지의 핵심 기능 요약
 * **저자 (author)**: 개발자 또는 조직명
 * **홈페이지 (homepage)**: 더 자세한 정보를 확인할 수 있는 링크
+* **실행 파일 이름 (bin_name)**: (선택 사항) 레포지토리 이름과 실제 실행 파일 이름이 다를 경우 명시합니다. (예: 레포지토리는 `package_manager`지만 실행 파일은 `ppm`인 경우)
 
 예시 파일은 이 레포지토리의 `ppm.json.example`을 참고하세요.
 

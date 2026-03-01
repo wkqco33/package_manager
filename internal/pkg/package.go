@@ -25,6 +25,7 @@ type Package struct {
 	Description string `json:"description"`
 	Author      string `json:"author"`
 	Homepage    string `json:"homepage"`
+	BinName     string `json:"bin_name"` // 실제 바이너리 이름 (레포지토리 이름과 다를 경우)
 }
 
 // RegistryFetcher는 레지스트리 메타데이터 조회/소스 다운로드 인터페이스입니다.
@@ -63,7 +64,11 @@ func InstallWithPackage(p *Package, fetcher RegistryFetcher, archiver Archiver, 
 	safeName := filepath.Base(p.Name)
 	extractDir := filepath.Join(packagesDir, fmt.Sprintf("%s-%s", safeName, p.Version))
 
-	binName := platform.ExecutableName(safeName)
+	baseBinName := safeName
+	if p.BinName != "" {
+		baseBinName = p.BinName
+	}
+	binName := platform.ExecutableName(baseBinName)
 	targetLink := filepath.Join(installPath, binName)
 
 	if _, err := os.Stat(extractDir); err == nil {
@@ -116,7 +121,28 @@ func Uninstall(pkgName, installPath string) error {
 	}
 
 	safeName := filepath.Base(pkgName)
-	binName := platform.ExecutableName(safeName)
+	
+	// 설치된 패키지들의 메타데이터를 확인하여 BinName 파악
+	baseBinName := safeName
+	entries, err := os.ReadDir(packagesDir)
+	if err == nil {
+		prefix := safeName + "-"
+		for _, entry := range entries {
+			if entry.IsDir() && (entry.Name() == safeName || strings.HasPrefix(entry.Name(), prefix)) {
+				metaPath := filepath.Join(packagesDir, entry.Name(), "ppm-meta.json")
+				data, readErr := os.ReadFile(metaPath)
+				if readErr == nil {
+					var p Package
+					if json.Unmarshal(data, &p) == nil && p.BinName != "" {
+						baseBinName = p.BinName
+						break
+					}
+				}
+			}
+		}
+	}
+
+	binName := platform.ExecutableName(baseBinName)
 	targetLink := filepath.Join(installPath, binName)
 
 	// 1) installPath에서 바이너리 또는 심볼릭 링크 제거
@@ -130,12 +156,16 @@ func Uninstall(pkgName, installPath string) error {
 	}
 
 	// 2) packagesDir에서 해당 패키지의 모든 버전 제거
-	entries, err := os.ReadDir(packagesDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // 제거할 항목 없음
+	if err != nil && os.IsNotExist(err) && entries == nil {
+		return nil // 제거할 항목 없음
+	}
+	
+	// 디렉토리를 다시 읽어 삭제 진행 (위에 err == nil 일때만 entries를 구했음)
+	if entries == nil {
+		entries, err = os.ReadDir(packagesDir)
+		if err != nil && os.IsNotExist(err) {
+			return nil
 		}
-		return apperr.Wrap(apperr.CodeFileSystem, err, "failed to read packages directory")
 	}
 
 	removedCount := 0

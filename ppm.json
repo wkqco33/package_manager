@@ -1,5 +1,6 @@
 {
   "description": "A simple and high-performance private package manager that installs binaries directly from GitHub releases with streaming support.",
   "author": "Gemini CLI & User",
-  "homepage": "https://github.com/wkqco/package_manager"
+  "homepage": "https://github.com/wkqco/package_manager",
+  "bin_name": "ppm"
 }

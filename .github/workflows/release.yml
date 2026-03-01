@@ -14,8 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, darwin]
+        goos: [linux, darwin, windows]
         goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
     
     steps:
       - name: Checkout code
@@ -32,14 +35,26 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          BINARY_NAME="ppm-${{ matrix.goos }}-${{ matrix.goarch }}"
+          ASSET_NAME="ppm_${{ matrix.goos }}_${{ matrix.goarch }}"
+          BIN_FILENAME="ppm"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BIN_FILENAME="ppm.exe"
+          fi
+          
           # Makefile의 최적화 플래그(LDFLAGS)를 명시적으로 사용
-          go build -ldflags="-s -w" -o "$BINARY_NAME" main.go
-          tar -czvf "$BINARY_NAME.tar.gz" "$BINARY_NAME"
+          go build -ldflags="-s -w" -o "$BIN_FILENAME" main.go
+          
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "${ASSET_NAME}.zip" "$BIN_FILENAME"
+          else
+            tar -czvf "${ASSET_NAME}.tar.gz" "$BIN_FILENAME"
+          fi
 
       - name: Upload binaries to Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ppm-*.tar.gz
+          files: |
+            ppm_*.tar.gz
+            ppm_*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
