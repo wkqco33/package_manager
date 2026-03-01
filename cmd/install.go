@@ -52,7 +52,11 @@ var installCmd = &cobra.Command{
 				}
 
 				safeName := filepath.Base(p.Name)
-				archiver := archive.NewArchiver(p.Source, safeName)
+				binName := safeName
+				if p.BinName != "" {
+					binName = p.BinName
+				}
+				archiver := archive.NewArchiver(p.Source, binName)
 
 				if err := pkg.InstallWithPackage(p, fetcher, archiver, cfg.InstallPath); err != nil {
 					errCh <- fmt.Errorf("[%s] %w", name, err)

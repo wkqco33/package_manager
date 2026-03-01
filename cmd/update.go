@@ -105,7 +105,11 @@ var updateCmd = &cobra.Command{
 				}
 
 				safeName := filepath.Base(latest.Name)
-				archiver := archive.NewArchiver(latest.Source, safeName)
+				binName := safeName
+				if latest.BinName != "" {
+					binName = latest.BinName
+				}
+				archiver := archive.NewArchiver(latest.Source, binName)
 				if err := pkg.InstallWithPackage(latest, fetcher, archiver, cfg.InstallPath); err != nil {
 					errCh <- fmt.Errorf("[%s] %w", name, err)
 				}
