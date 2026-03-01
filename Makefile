@@ -17,18 +17,18 @@ all: build
 build:
 	@echo "Building $(BINARY_NAME)..."
 	@echo "Version: $(VERSION)"
-	go build $(LDFLAGS) -o $(BINARY_NAME) main.go
+	go build $(LDFLAGS) -o $(BINARY_NAME) .
 
 ## build-all: Linux, macOS (amd64, arm64), Windows용 바이너리 빌드
 build-all:
 	@echo "Building for multiple platforms..."
 	@echo "Version: $(VERSION)"
 	@mkdir -p dist
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/ppm-linux-amd64 main.go
-	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/ppm-linux-arm64 main.go
-	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/ppm-darwin-amd64 main.go
-	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/ppm-darwin-arm64 main.go
-	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/ppm-windows-amd64.exe main.go
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/ppm-linux-amd64 .
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/ppm-linux-arm64 .
+	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/ppm-darwin-amd64 .
+	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/ppm-darwin-arm64 .
+	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/ppm-windows-amd64.exe .
 	@echo "Build complete. Check the 'dist' directory."
 
 ## lint: go vet를 사용한 정적 분석 실행
