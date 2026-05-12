@@ -48,13 +48,14 @@ my-tool/
 
 ## 4. GitHub 릴리스 등록
 
-`ppm`은 GitHub API의 `/releases/latest` 엔드포인트를 사용하여 패키지를 찾습니다.
+`ppm`은 먼저 GitHub API의 `/releases/latest` 엔드포인트를 확인하고, 릴리스가 없으면 최신 태그로 폴백합니다.
 
 1. GitHub 레포지토리의 **Releases** 섹션으로 이동합니다.
 2. **Create a new release**를 클릭합니다.
 3. **Tag version** (예: `v1.0.0`)을 입력합니다.
 4. **Publish release**를 클릭하여 'Latest' 태그가 붙은 릴리스를 생성합니다.
-    * `ppm`은 별도의 Asset 업로드 없이도 GitHub이 생성하는 소스 코드 tarball을 기본적으로 다운로드합니다.
+    * 플랫폼별 바이너리 Asset이 있으면 그것을 우선 설치합니다.
+    * Asset이 없으면 GitHub이 제공하는 소스 코드 tarball(또는 최신 태그 tarball)로 폴백하며, Go 프로젝트는 소스에서 빌드해 설치할 수 있습니다.
 
 ## 4. 상세 메타데이터 등록 (`ppm.json`)
 

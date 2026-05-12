@@ -82,7 +82,7 @@ ppm init
 
 ### 2. 패키지 설치
 
-프라이빗 레포지토리에서 현재 시스템에 맞는 바이너리를 설치합니다.
+프라이빗 레포지토리에서 현재 시스템에 맞는 바이너리를 설치합니다. GitHub Release가 없으면 최신 태그로, 바이너리 Asset이 없으면 소스 아카이브로 자동 폴백합니다.
 
 ```bash
 ppm install owner/repo1 owner/repo2
@@ -116,6 +116,6 @@ ppm uninstall owner/repo1 repo2
 
 ## 설정 상세 (`config.yaml`)
 
-- `registry_url`: 레지스트리 API URL (기본값: `https://api.github.com`)
+- `registry_url`: 레지스트리 API URL (기본값: `https://api.github.com`). 커스텀 레지스트리에서 패키지를 찾지 못하면 GitHub 공개 API로 한 번 더 조회합니다.
 - `auth_token`: GitHub Personal Access Token (PAT)
 - `install_path`: 바이너리가 설치될 경로 (기본값: `~/.local/bin` 또는 Windows 사용자 홈 `.local\bin`)

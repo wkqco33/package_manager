@@ -2,12 +2,12 @@ package registry
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"ppm/internal/apperr"
@@ -40,120 +40,186 @@ type ghRelease struct {
 	Assets     []ghAsset `json:"assets"`
 }
 
+type ghTag struct {
+	Name       string `json:"name"`
+	TarballUrl string `json:"tarball_url"`
+}
+
+type ppmMeta struct {
+	Description string `json:"description"`
+	Author      string `json:"author"`
+	Homepage    string `json:"homepage"`
+	BinName     string `json:"bin_name"`
+}
+
+var publicGitHubAPIURL = "https://api.github.com"
+
+var errLatestReleaseNotFound = errors.New("github latest release not found")
+var errRepositoryNotFound = errors.New("github repository not found")
+
 // GetMetadata는 GitHub 저장소의 최신 릴리스 메타데이터를 조회합니다.
 func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
-	// pkgName 형식: "owner/repo"
-	apiURL := fmt.Sprintf("%s/repos/%s/releases/latest", g.URL, pkgName)
-	contentURL := fmt.Sprintf("%s/repos/%s/contents/ppm.json", g.URL, pkgName)
-
-	type releaseResult struct {
-		rel ghRelease
-		err error
-	}
-	type ppmMeta struct {
-		Description string `json:"description"`
-		Author      string `json:"author"`
-		Homepage    string `json:"homepage"`
-		BinName     string `json:"bin_name"`
-	}
-	type metaResult struct {
-		meta ppmMeta
-		err  error
-	}
-
-	relCh := make(chan releaseResult, 1)
-	metaCh := make(chan metaResult, 1)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// 고루틴 1: 릴리스 정보 조회
-	go func() {
-		defer wg.Done()
-		req, err := http.NewRequest("GET", apiURL, nil)
-		if err != nil {
-			relCh <- releaseResult{err: apperr.Wrap(apperr.CodeNetwork, err, "failed to create github api request")}
-			return
-		}
-		req.Header.Set("Accept", "application/vnd.github.v3+json")
-		if g.Token != "" {
-			req.Header.Set("Authorization", "Bearer "+g.Token)
-		}
-		resp, err := defaultHTTPClient.Do(req)
-		if err != nil {
-			relCh <- releaseResult{err: apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github api request")}
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			relCh <- releaseResult{err: apperr.New(apperr.CodeRegistry, "failed to get release info for %s: HTTP %d", pkgName, resp.StatusCode)}
-			return
-		}
-		var rel ghRelease
-		if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-			relCh <- releaseResult{err: apperr.Wrap(apperr.CodeRegistry, err, "failed to decode github release metadata")}
-			return
-		}
-		relCh <- releaseResult{rel: rel}
-	}()
-
-	// 고루틴 2: 선택적 ppm.json 조회
-	go func() {
-		defer wg.Done()
-		req, err := http.NewRequest("GET", contentURL, nil)
-		if err != nil {
-			metaCh <- metaResult{}
-			return
-		}
-		req.Header.Set("Accept", "application/vnd.github.v3.raw")
-		if g.Token != "" {
-			req.Header.Set("Authorization", "Bearer "+g.Token)
-		}
-		resp, err := defaultHTTPClient.Do(req)
-		if err != nil {
-			metaCh <- metaResult{}
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			metaCh <- metaResult{}
-			return
-		}
-		var meta ppmMeta
-		if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
-			metaCh <- metaResult{}
-			return
-		}
-		metaCh <- metaResult{meta: meta}
-	}()
-
-	wg.Wait()
-
-	relRes := <-relCh
-	if relRes.err != nil {
-		return nil, relRes.err
+	baseURL, rel, err := g.resolveReleaseMetadata(pkgName)
+	if err != nil {
+		return nil, err
 	}
 
 	p := &pkg.Package{
-		Name:    pkgName,
-		Version: relRes.rel.TagName,
+		Name:        pkgName,
+		Version:     rel.TagName,
+		RegistryURL: baseURL,
+	}
+	if rel.TagName == "" {
+		return nil, apperr.New(apperr.CodeRegistry, "failed to determine a version for %s", pkgName)
 	}
 
 	// 현재 플랫폼에 맞는 최적 에셋 탐색
-	bestAsset := g.findBestAsset(relRes.rel.Assets)
-	if bestAsset == nil {
-		return nil, apperr.New(apperr.CodeRegistry, "현재 플랫폼(%s/%s)에 맞는 바이너리 에셋을 찾을 수 없습니다. 패키지 관리자가 릴리스에 바이너리를 업로드했는지 확인해 주세요.", runtime.GOOS, runtime.GOARCH)
+	bestAsset := g.findBestAsset(rel.Assets)
+	if bestAsset != nil {
+		p.Source = bestAsset.BrowserDownloadUrl
+		p.AssetID = bestAsset.Id
+	} else if rel.TarballUrl != "" {
+		p.Source = rel.TarballUrl
+	} else {
+		return nil, apperr.New(apperr.CodeRegistry, "현재 플랫폼(%s/%s)에 맞는 바이너리 에셋이나 소스 아카이브를 찾을 수 없습니다.", runtime.GOOS, runtime.GOARCH)
 	}
-	p.Source = bestAsset.BrowserDownloadUrl
-	p.AssetID = bestAsset.Id
 
-	metaRes := <-metaCh
-	p.Description = metaRes.meta.Description
-	p.Author = metaRes.meta.Author
-	p.Homepage = metaRes.meta.Homepage
-	p.BinName = metaRes.meta.BinName
+	meta := g.fetchPPMMetadata(baseURL, pkgName)
+	p.Description = meta.Description
+	p.Author = meta.Author
+	p.Homepage = meta.Homepage
+	p.BinName = meta.BinName
 
 	return p, nil
+}
+
+func (g *GitHubRegistry) resolveReleaseMetadata(pkgName string) (string, ghRelease, error) {
+	for _, baseURL := range g.apiBaseCandidates() {
+		apiURL := fmt.Sprintf("%s/repos/%s/releases/latest", baseURL, pkgName)
+		rel, err := g.fetchLatestRelease(pkgName, apiURL)
+		if err == nil {
+			return baseURL, rel, nil
+		}
+		if !errors.Is(err, errLatestReleaseNotFound) {
+			return "", ghRelease{}, err
+		}
+
+		tag, tagErr := g.fetchLatestTag(pkgName, baseURL)
+		if tagErr == nil {
+			return baseURL, ghRelease{
+				TagName:    tag.Name,
+				TarballUrl: tag.TarballUrl,
+			}, nil
+		}
+		if errors.Is(tagErr, errRepositoryNotFound) {
+			continue
+		}
+		return "", ghRelease{}, tagErr
+	}
+
+	return "", ghRelease{}, apperr.New(apperr.CodeRegistry, "repository %s was not found. Check the owner/repo spelling, auth_token, and registry_url.", pkgName)
+}
+
+func (g *GitHubRegistry) apiBaseCandidates() []string {
+	baseURL := strings.TrimRight(g.URL, "/")
+	if baseURL == "" {
+		baseURL = publicGitHubAPIURL
+	}
+	if baseURL == publicGitHubAPIURL {
+		return []string{publicGitHubAPIURL}
+	}
+	return []string{baseURL, publicGitHubAPIURL}
+}
+
+func (g *GitHubRegistry) fetchPPMMetadata(baseURL, pkgName string) ppmMeta {
+	contentURL := fmt.Sprintf("%s/repos/%s/contents/ppm.json", baseURL, pkgName)
+	req, err := http.NewRequest("GET", contentURL, nil)
+	if err != nil {
+		return ppmMeta{}
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3.raw")
+	if g.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+g.Token)
+	}
+
+	resp, err := defaultHTTPClient.Do(req)
+	if err != nil {
+		return ppmMeta{}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ppmMeta{}
+	}
+
+	var meta ppmMeta
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+		return ppmMeta{}
+	}
+	return meta
+}
+
+func (g *GitHubRegistry) fetchLatestRelease(pkgName, apiURL string) (ghRelease, error) {
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return ghRelease{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to create github api request")
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	if g.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+g.Token)
+	}
+
+	resp, err := defaultHTTPClient.Do(req)
+	if err != nil {
+		return ghRelease{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github api request")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ghRelease{}, errLatestReleaseNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		return ghRelease{}, apperr.New(apperr.CodeRegistry, "failed to get release info for %s: HTTP %d", pkgName, resp.StatusCode)
+	}
+
+	var rel ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		return ghRelease{}, apperr.Wrap(apperr.CodeRegistry, err, "failed to decode github release metadata")
+	}
+	return rel, nil
+}
+
+func (g *GitHubRegistry) fetchLatestTag(pkgName, baseURL string) (ghTag, error) {
+	tagsURL := fmt.Sprintf("%s/repos/%s/tags", baseURL, pkgName)
+	req, err := http.NewRequest("GET", tagsURL, nil)
+	if err != nil {
+		return ghTag{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to create github tags request")
+	}
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	if g.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+g.Token)
+	}
+
+	resp, err := defaultHTTPClient.Do(req)
+	if err != nil {
+		return ghTag{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github tags request")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ghTag{}, errRepositoryNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		return ghTag{}, apperr.New(apperr.CodeRegistry, "failed to get tag info for %s: HTTP %d", pkgName, resp.StatusCode)
+	}
+
+	var tags []ghTag
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		return ghTag{}, apperr.Wrap(apperr.CodeRegistry, err, "failed to decode github tag metadata")
+	}
+	if len(tags) == 0 {
+		return ghTag{}, apperr.New(apperr.CodeRegistry, "no releases or tags found for %s", pkgName)
+	}
+	return tags[0], nil
 }
 
 func (g *GitHubRegistry) findBestAsset(assets []ghAsset) *ghAsset {
@@ -231,7 +297,11 @@ func (g *GitHubRegistry) DownloadSource(p *pkg.Package) (io.ReadCloser, int64, e
 		// p.Source가 "https://github.com/owner/repo/releases/download/v1.0.0/asset.zip" 형태라면
 		// 이를 "https://api.github.com/repos/owner/repo/releases/assets/asset_id" 형태로 변환하거나
 		// p.Name(owner/repo)을 활용하여 직접 생성합니다.
-		downloadURL = fmt.Sprintf("%s/repos/%s/releases/assets/%d", g.URL, p.Name, p.AssetID)
+		assetBaseURL := p.RegistryURL
+		if assetBaseURL == "" {
+			assetBaseURL = g.URL
+		}
+		downloadURL = fmt.Sprintf("%s/repos/%s/releases/assets/%d", strings.TrimRight(assetBaseURL, "/"), p.Name, p.AssetID)
 	}
 
 	req, err := http.NewRequest("GET", downloadURL, nil)

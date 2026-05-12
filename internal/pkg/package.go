@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"ppm/internal/apperr"
@@ -20,6 +22,7 @@ type Package struct {
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Source      string `json:"source"`
+	RegistryURL string `json:"registry_url,omitempty"`
 	AssetID     int64  `json:"asset_id"` // 프라이빗 에셋 다운로드용 ID
 	Checksum    string `json:"checksum"`
 	Description string `json:"description"`
@@ -105,7 +108,7 @@ func InstallWithPackage(p *Package, fetcher RegistryFetcher, archiver Archiver, 
 	logger.Debug("Linking binary", "src", extractDir, "link", targetLink)
 
 	// 기본값: 아카이브 내부 바이너리 이름은 저장소명(safeName)과 동일하다고 가정
-	if err := archiver.Link(extractDir, binName, targetLink); err != nil {
+	if err := linkInstalledBinary(archiver, extractDir, binName, targetLink); err != nil {
 		return apperr.Wrap(apperr.CodeFileSystem, err, "linking error")
 	}
 
@@ -197,6 +200,119 @@ func saveMetadata(dir string, p *Package) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, "ppm-meta.json"), data, 0644)
+}
+
+func linkInstalledBinary(archiver Archiver, extractDir, binName, targetLink string) error {
+	if err := archiver.Link(extractDir, binName, targetLink); err == nil {
+		return nil
+	} else {
+		attempted, buildErr := buildGoSourceFallback(extractDir, binName)
+		if !attempted {
+			return err
+		}
+		if buildErr != nil {
+			return apperr.New(apperr.CodeArchive, "failed to find packaged binary and build from source: link error: %v; build error: %v", err, buildErr)
+		}
+		if err := archiver.Link(extractDir, binName, targetLink); err != nil {
+			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to link built binary")
+		}
+		return nil
+	}
+}
+
+func buildGoSourceFallback(extractDir, binName string) (bool, error) {
+	buildDir, ok := findGoBuildDir(extractDir)
+	if !ok {
+		return false, nil
+	}
+
+	outputPath := filepath.Join(extractDir, binName)
+	cmd := exec.Command("go", "build", "-o", outputPath, ".")
+	cmd.Dir = buildDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return true, fmt.Errorf("go build failed in %s: %s", buildDir, msg)
+	}
+
+	if _, err := os.Stat(outputPath); err != nil {
+		return true, fmt.Errorf("go build did not produce %s: %w", outputPath, err)
+	}
+
+	return true, nil
+}
+
+func findGoBuildDir(root string) (string, bool) {
+	if hasPackageMain(root) {
+		return root, true
+	}
+
+	type candidate struct {
+		path  string
+		depth int
+	}
+	var candidates []candidate
+
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil || rel == "." {
+			return nil
+		}
+
+		depth := len(strings.Split(filepath.ToSlash(rel), "/"))
+		if depth > 4 {
+			return filepath.SkipDir
+		}
+
+		if hasPackageMain(path) {
+			candidates = append(candidates, candidate{path: path, depth: depth})
+			return filepath.SkipDir
+		}
+		return nil
+	})
+
+	if len(candidates) == 0 {
+		return "", false
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].depth != candidates[j].depth {
+			return candidates[i].depth < candidates[j].depth
+		}
+		return candidates[i].path < candidates[j].path
+	})
+
+	return candidates[0].path, true
+}
+
+func hasPackageMain(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(data), "package main") {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ListInstalled는 packages 디렉터리를 스캔해 설치 목록을 반환합니다.

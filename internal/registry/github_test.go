@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 
 	"ppm/internal/pkg"
@@ -52,12 +53,125 @@ func TestGitHubRegistry_GetMetadata(t *testing.T) {
 	if p.Version != "v1.2.3" {
 		t.Errorf("Expected version v1.2.3, got %s", p.Version)
 	}
+	if p.Source != "https://example.com/"+assetNameForCurrentPlatform() {
+		t.Errorf("Expected asset source to be selected, got %s", p.Source)
+	}
 	if p.Description != "A test package" {
 		t.Errorf("Expected description 'A test package', got %s", p.Description)
 	}
 	if p.Author != "Tester" {
 		t.Errorf("Expected author 'Tester', got %s", p.Author)
 	}
+}
+
+func TestGitHubRegistry_GetMetadataFallsBackToLatestTag(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/releases/latest":
+			w.WriteHeader(http.StatusNotFound)
+		case "/repos/owner/repo/tags":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintln(w, `[{"name":"v1.2.4","tarball_url":"https://example.com/source-v1.2.4.tar.gz"}]`)
+		case "/repos/owner/repo/contents/ppm.json":
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	g := &GitHubRegistry{URL: server.URL}
+	p, err := g.GetMetadata("owner/repo")
+	if err != nil {
+		t.Fatalf("GetMetadata failed: %v", err)
+	}
+
+	if p.Version != "v1.2.4" {
+		t.Errorf("Expected version v1.2.4, got %s", p.Version)
+	}
+	if p.Source != "https://example.com/source-v1.2.4.tar.gz" {
+		t.Errorf("Expected source tarball fallback, got %s", p.Source)
+	}
+	if p.AssetID != 0 {
+		t.Errorf("Expected no asset ID for tag fallback, got %d", p.AssetID)
+	}
+}
+
+func TestGitHubRegistry_GetMetadataFallsBackToPublicGitHubAPI(t *testing.T) {
+	originalPublicURL := publicGitHubAPIURL
+	defer func() { publicGitHubAPIURL = originalPublicURL }()
+
+	privateRegistry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer privateRegistry.Close()
+
+	publicRegistry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/releases/latest":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"tag_name":"v2.0.0","tarball_url":"https://example.com/v2.tar.gz","assets":[]}`)
+		case "/repos/owner/repo/contents/ppm.json":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintln(w, `{"description":"fallback package","author":"Tester"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer publicRegistry.Close()
+
+	publicGitHubAPIURL = publicRegistry.URL
+
+	g := &GitHubRegistry{URL: privateRegistry.URL}
+	p, err := g.GetMetadata("owner/repo")
+	if err != nil {
+		t.Fatalf("GetMetadata failed: %v", err)
+	}
+
+	if p.Version != "v2.0.0" {
+		t.Errorf("Expected version v2.0.0, got %s", p.Version)
+	}
+	if p.Source != "https://example.com/v2.tar.gz" {
+		t.Errorf("Expected fallback tarball source, got %s", p.Source)
+	}
+	if p.Description != "fallback package" {
+		t.Errorf("Expected fallback metadata description, got %s", p.Description)
+	}
+}
+
+func TestGitHubRegistry_GetMetadataReturnsClearNotFoundError(t *testing.T) {
+	originalPublicURL := publicGitHubAPIURL
+	defer func() { publicGitHubAPIURL = originalPublicURL }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	publicGitHubAPIURL = server.URL
+
+	g := &GitHubRegistry{URL: server.URL}
+	_, err := g.GetMetadata("owner/typo-repo")
+	if err == nil {
+		t.Fatal("Expected GetMetadata to fail")
+	}
+
+	if got := err.Error(); got == "" || !containsAll(got, "owner/typo-repo", "spelling", "registry_url") {
+		t.Fatalf("Expected helpful not found error, got %q", got)
+	}
+}
+
+func assetNameForCurrentPlatform() string {
+	return fmt.Sprintf("ppm-v1.2.3-%s-%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+}
+
+func containsAll(s string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(s, part) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestGitHubRegistry_DownloadSource(t *testing.T) {
@@ -84,5 +198,36 @@ func TestGitHubRegistry_DownloadSource(t *testing.T) {
 	}
 	if string(content) != "mock content" {
 		t.Errorf("Content mismatch: got %s, want mock content", string(content))
+	}
+}
+
+func TestGitHubRegistry_DownloadSourceUsesResolvedRegistryURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/releases/assets/99" {
+			t.Fatalf("Unexpected path: %s", r.URL.Path)
+		}
+		fmt.Fprint(w, "asset content")
+	}))
+	defer server.Close()
+
+	g := &GitHubRegistry{URL: "https://custom.example.com"}
+	p := &pkg.Package{
+		Name:        "owner/repo",
+		AssetID:     99,
+		RegistryURL: server.URL,
+	}
+
+	body, _, err := g.DownloadSource(p)
+	if err != nil {
+		t.Fatalf("DownloadSource failed: %v", err)
+	}
+	defer body.Close()
+
+	content, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if string(content) != "asset content" {
+		t.Errorf("Content mismatch: got %s, want asset content", string(content))
 	}
 }
