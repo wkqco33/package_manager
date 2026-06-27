@@ -11,7 +11,21 @@ import (
 	"testing"
 
 	"ppm/internal/apperr"
+	"ppm/internal/config"
+	"ppm/internal/platform"
 )
+
+// setupTempHome은 모든 OS에서 ppm 표준 경로가 임시 디렉터리를 가리키도록 환경변수를 설정합니다.
+// os.UserHomeDir()는 Unix에서 HOME, Windows에서 USERPROFILE을 사용하므로 둘 다 설정하고,
+// APPDATA는 비워서 platform.GetPaths()가 home/AppData/Roaming 으로 파생되게 합니다.
+func setupTempHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)        // Unix
+	t.Setenv("USERPROFILE", home) // Windows (os.UserHomeDir)
+	t.Setenv("APPDATA", "")       // GetPaths가 home/AppData/Roaming 으로 파생
+	return home
+}
 
 // MockFetcher는 RegistryFetcher 목 구현체입니다.
 type MockFetcher struct {
@@ -50,13 +64,8 @@ func (a *MockArchiver) Link(dir, name, target string) error {
 }
 
 func TestInstall(t *testing.T) {
-	// Mock HOME to a temp directory for this test
-	tempHome, _ := os.MkdirTemp("", "ppm-home-*")
-	defer os.RemoveAll(tempHome)
-
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", oldHome)
+	// 모든 OS에서 임시 홈을 가리키도록 설정 (packages 디렉터리가 임시 경로로 해석됨)
+	setupTempHome(t)
 
 	mockPkg := &Package{
 		Name:    "test/repo",
@@ -67,8 +76,7 @@ func TestInstall(t *testing.T) {
 	archiver := &MockArchiver{}
 
 	// Create temp bin dir
-	binDir, _ := os.MkdirTemp("", "ppm-test-bin-*")
-	defer os.RemoveAll(binDir)
+	binDir := t.TempDir()
 
 	// Normal installation
 	err := Install("test/repo", fetcher, archiver, binDir)
@@ -97,6 +105,53 @@ func TestInstall(t *testing.T) {
 	}
 	if !archiver.linked {
 		t.Error("Archiver.Link should still be called to ensure link")
+	}
+}
+
+func TestUninstall(t *testing.T) {
+	setupTempHome(t)
+
+	packagesDir, err := config.GetPackagesDir()
+	if err != nil {
+		t.Fatalf("GetPackagesDir failed: %v", err)
+	}
+
+	// 메타데이터(BinName 포함)를 가진 설치 패키지 디렉터리 구성
+	pkgDir := filepath.Join(packagesDir, "repo-v1.0.0")
+	if err := os.MkdirAll(pkgDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	meta := &Package{Name: "owner/repo", Version: "v1.0.0", BinName: "mybin"}
+	if err := saveMetadata(pkgDir, meta); err != nil {
+		t.Fatalf("saveMetadata failed: %v", err)
+	}
+
+	// 설치된 바이너리(링크 대용) 배치
+	binDir := t.TempDir()
+	binPath := filepath.Join(binDir, platform.ExecutableName("mybin"))
+	if err := os.WriteFile(binPath, []byte("binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Uninstall("owner/repo", binDir); err != nil {
+		t.Fatalf("Uninstall failed: %v", err)
+	}
+
+	if _, err := os.Stat(pkgDir); !os.IsNotExist(err) {
+		t.Errorf("패키지 디렉터리가 제거되지 않았습니다: %s", pkgDir)
+	}
+	if _, err := os.Stat(binPath); !os.IsNotExist(err) {
+		t.Errorf("설치된 바이너리가 제거되지 않았습니다: %s", binPath)
+	}
+}
+
+func TestUninstallMissingPackage(t *testing.T) {
+	setupTempHome(t)
+
+	// 설치된 것이 없어도 에러 없이 처리되어야 함
+	binDir := t.TempDir()
+	if err := Uninstall("owner/does-not-exist", binDir); err != nil {
+		t.Errorf("미설치 패키지 제거는 에러가 없어야 합니다: %v", err)
 	}
 }
 
@@ -174,15 +229,9 @@ func TestListInstalledWithLegacy(t *testing.T) {
 }
 
 func TestInstallWithPackage_BuildsFromGoSourceTarball(t *testing.T) {
-	tempHome, _ := os.MkdirTemp("", "ppm-home-*")
-	defer os.RemoveAll(tempHome)
+	setupTempHome(t)
 
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", oldHome)
-
-	binDir, _ := os.MkdirTemp("", "ppm-test-bin-*")
-	defer os.RemoveAll(binDir)
+	binDir := t.TempDir()
 
 	fetcher := &sourceArchiveFetcher{
 		pkg: &Package{
@@ -203,7 +252,7 @@ func TestInstallWithPackage_BuildsFromGoSourceTarball(t *testing.T) {
 		t.Fatalf("InstallWithPackage failed: %v", err)
 	}
 
-	target := filepath.Join(binDir, "repo")
+	target := filepath.Join(binDir, platform.ExecutableName("repo"))
 	if _, err := os.Stat(target); err != nil {
 		t.Fatalf("Expected installed binary at %s: %v", target, err)
 	}

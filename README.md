@@ -14,56 +14,34 @@
 
 ## 설치 및 빌드
 
-### 자동 설치 (추천)
+[Task](https://taskfile.dev)(go-task)를 사용하여 모든 OS(Windows/macOS/Linux)에서 편리하게 빌드 및 설치할 수 있습니다.
 
-터미널에서 아래 명령어를 실행하여 현재 환경에 맞는 최신 버전을 자동으로 설치할 수 있습니다.
-
-#### 공개 저장소 (Public Repository)
+먼저 Task를 설치합니다. (자세한 방법: https://taskfile.dev/installation)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/install.sh | sh
+go install github.com/go-task/task/v3/cmd/task@latest
 ```
 
-#### 프라이빗 저장소 (Private Repository)
-
-프라이빗 저장소의 경우 GitHub Token(PAT)이 필요합니다.
+### 빌드 및 설치
 
 ```bash
-export GITHUB_TOKEN="your_personal_access_token"
-curl -H "Authorization: token $GITHUB_TOKEN" \
-     -H "Accept: application/vnd.github.v3.raw" \
-     -fsSL https://api.github.com/repos/OWNER/REPO/contents/install.sh | sh
-```
+# 최적화된 바이너리 빌드 후 로컬 경로(~/.local/bin)에 설치
+task install
 
-### 로컬 빌드
-
-`Makefile`을 사용하여 직접 빌드할 수 있습니다.
-
-```bash
-# 로컬 빌드
-make build
+# 로컬 빌드만 수행
+task build
 
 # 모든 플랫폼용 바이너리 빌드 (Linux, macOS, Windows)
-make build-all
+task build-all
 ```
 
 ## 삭제 방법
 
-설치된 바이너리와 모든 설정, 패키지 데이터를 시스템에서 완전히 제거할 수 있습니다.
-
-### 공개 저장소
+설치된 바이너리를 시스템에서 제거하려면 다음 명령을 실행합니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/uninstall.sh | sh
-```
-
-### 프라이빗 저장소
-
-```bash
-export GITHUB_TOKEN="your_personal_access_token"
-curl -H "Authorization: token $GITHUB_TOKEN" \
-     -H "Accept: application/vnd.github.v3.raw" \
-     -fsSL https://api.github.com/repos/OWNER/REPO/contents/uninstall.sh | sh
+# 로컬 경로에서 바이너리 삭제
+task uninstall
 ```
 
 ## 사용 방법

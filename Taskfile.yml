@@ -1,0 +1,98 @@
+# ppm (Private Package Manager) Taskfile
+# https://taskfile.dev
+#
+# 모든 OS(Windows/macOS/Linux)에서 동작합니다.
+# 설치: https://taskfile.dev/installation
+#   go install github.com/go-task/task/v3/cmd/task@latest
+
+version: '3'
+
+vars:
+  BINARY_NAME: ppm
+  # Windows에서는 실행 파일에 .exe 확장자를 붙입니다.
+  BIN: 'ppm{{if eq OS "windows"}}.exe{{end}}'
+  # 내장 셸(mvdan.cc/sh) 덕분에 || 와 2>/dev/null 이 모든 OS에서 동작합니다.
+  VERSION:
+    sh: git describe --tags --abbrev=0 2>/dev/null || echo dev
+  # 빌드 플래그 (성능 최적화 및 바이너리 크기 감소)
+  # 명령에서 -ldflags="{{.LDFLAGS}}" 처럼 따옴표로 감싸 하나의 인자로 전달합니다.
+  LDFLAGS: '-s -w -X ppm/cmd.Version={{.VERSION}}'
+  # 로컬 설치 경로 (OS별로 분기)
+  INSTALL_DIR: '{{if eq OS "windows"}}{{.USERPROFILE}}\.local\bin{{else}}{{.HOME}}/.local/bin{{end}}'
+
+tasks:
+  default:
+    desc: 기본 작업 (build)
+    deps: [build]
+
+  build:
+    desc: 최적화된 바이너리 생성 (-s -w 플래그 적용)
+    cmds:
+      - echo "Building {{.BINARY_NAME}} (version {{.VERSION}})..."
+      - go build -ldflags="{{.LDFLAGS}}" -o {{.BIN}} .
+
+  build-all:
+    desc: Linux, macOS (amd64/arm64), Windows용 바이너리 빌드
+    cmds:
+      - echo "Building for multiple platforms (version {{.VERSION}})..."
+      - cmd: mkdir -p dist
+        platforms: [linux, darwin]
+      - cmd: powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path dist | Out-Null"
+        platforms: [windows]
+      - GOOS=linux GOARCH=amd64 go build -ldflags="{{.LDFLAGS}}" -o dist/ppm_linux_amd64 .
+      - GOOS=linux GOARCH=arm64 go build -ldflags="{{.LDFLAGS}}" -o dist/ppm_linux_arm64 .
+      - GOOS=darwin GOARCH=amd64 go build -ldflags="{{.LDFLAGS}}" -o dist/ppm_darwin_amd64 .
+      - GOOS=darwin GOARCH=arm64 go build -ldflags="{{.LDFLAGS}}" -o dist/ppm_darwin_arm64 .
+      - GOOS=windows GOARCH=amd64 go build -ldflags="{{.LDFLAGS}}" -o dist/ppm_windows_amd64.exe .
+      - echo "Build complete. Check the 'dist' directory."
+
+  lint:
+    desc: go vet를 사용한 정적 분석 실행
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: 모든 패키지의 테스트 실행
+    cmds:
+      - go test -v ./...
+
+  fmt:
+    desc: Go 코드 스타일 정렬
+    cmds:
+      - go fmt ./...
+
+  install:
+    desc: 빌드 후 로컬 경로(INSTALL_DIR)에 설치
+    deps: [build]
+    cmds:
+      - echo "Installing {{.BINARY_NAME}} to {{.INSTALL_DIR}}..."
+      - cmd: mkdir -p "{{.INSTALL_DIR}}"
+        platforms: [linux, darwin]
+      - cmd: cp "{{.BIN}}" "{{.INSTALL_DIR}}/{{.BIN}}"
+        platforms: [linux, darwin]
+      - cmd: chmod +x "{{.INSTALL_DIR}}/{{.BIN}}"
+        platforms: [linux, darwin]
+      - cmd: powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '{{.INSTALL_DIR}}' | Out-Null; Copy-Item -Force '{{.BIN}}' (Join-Path '{{.INSTALL_DIR}}' '{{.BIN}}')"
+        platforms: [windows]
+      - echo "Installation complete. Please ensure {{.INSTALL_DIR}} is in your PATH."
+
+  uninstall:
+    desc: 로컬 경로에서 바이너리 삭제
+    cmds:
+      - echo "Uninstalling {{.BINARY_NAME}} from {{.INSTALL_DIR}}..."
+      - cmd: rm -f "{{.INSTALL_DIR}}/{{.BIN}}"
+        platforms: [linux, darwin]
+      - cmd: powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path '{{.INSTALL_DIR}}' '{{.BIN}}')"
+        platforms: [windows]
+      - echo "Uninstallation complete."
+
+  clean:
+    desc: 빌드 결과물 및 임시 파일 삭제
+    cmds:
+      - echo "Cleaning up..."
+      - go clean
+      - cmd: rm -rf "{{.BIN}}" dist
+        platforms: [linux, darwin]
+      - cmd: powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue '{{.BIN}}'; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue dist"
+        platforms: [windows]
+      - echo "Cleanup complete."

@@ -7,10 +7,21 @@ import (
 	"testing"
 )
 
+// setupTempHome은 모든 OS에서 ppm 표준 경로가 임시 디렉터리를 가리키도록 환경변수를 설정합니다.
+// os.UserHomeDir()는 Unix에서 HOME, Windows에서 USERPROFILE을 사용하므로 둘 다 설정하고,
+// APPDATA는 비워서 platform.GetPaths()가 home/AppData/Roaming 으로 파생되게 합니다.
+func setupTempHome(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)        // Unix
+	t.Setenv("USERPROFILE", home) // Windows (os.UserHomeDir)
+	t.Setenv("APPDATA", "")       // GetPaths가 home/AppData/Roaming 으로 파생
+	return home
+}
+
 func TestGenerateAndLoadConfig(t *testing.T) {
-	// 임시 HOME 디렉토리 설정
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome) // Go 1.17+ 에서는 t.Setenv로 환경변수 안전한 조작 가능
+	// 임시 HOME 디렉토리 설정 (모든 OS 독립적)
+	tmpHome := setupTempHome(t)
 
 	// 1. 설정 파일 생성 테스트
 	err := GenerateDefaultConfig()
