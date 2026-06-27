@@ -166,11 +166,6 @@ func (a *ZipArchiver) Link(extractedDir, binName, targetLinkPath string) error {
 		return apperr.New(apperr.CodeArchive, "%s", msg)
 	}
 
-	// 기존 링크/파일 제거
-	if _, err := os.Stat(targetLinkPath); err == nil {
-		os.Remove(targetLinkPath)
-	}
-
 	if err := os.MkdirAll(filepath.Dir(targetLinkPath), 0755); err != nil {
 		return err
 	}
@@ -179,28 +174,17 @@ func (a *ZipArchiver) Link(extractedDir, binName, targetLinkPath string) error {
 	os.Chmod(srcFile, 0755)
 
 	if runtime.GOOS == "windows" {
-		// Windows에서는 심볼릭 링크 대신 파일을 복사합니다.
-		return a.copyFile(srcFile, targetLinkPath)
+		// Windows에서는 심볼릭 링크 대신 파일을 복사하며,
+		// 실행 중인 바이너리도 안전하게 교체합니다.
+		return installExecutable(srcFile, targetLinkPath)
 	}
 
+	// 기존 링크/파일 제거 후 심볼릭 링크 생성
+	if _, err := os.Stat(targetLinkPath); err == nil {
+		os.Remove(targetLinkPath)
+	}
 	if err := os.Symlink(srcFile, targetLinkPath); err != nil {
 		return apperr.Wrap(apperr.CodeFileSystem, err, "failed to link executable")
 	}
 	return nil
-}
-func (a *ZipArchiver) copyFile(src, dst string) error {
-	source, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-
-	destination, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destination.Close()
-
-	_, err = io.Copy(destination, source)
-	return err
 }
