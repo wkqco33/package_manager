@@ -1,11 +1,9 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -75,54 +73,36 @@ var updateCmd = &cobra.Command{
 			return
 		}
 
-		var wg sync.WaitGroup
-		sem := make(chan struct{}, 5)
-		errCh := make(chan error, len(targetPackages))
-
-		for _, pkgName := range targetPackages {
-			wg.Add(1)
-			go func(name string) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-
-				fetcher := &registry.GitHubRegistry{
-					Token: cfg.AuthToken,
-					URL:   cfg.RegistryURL,
-				}
-
-				latest, err := fetcher.GetMetadata(name)
-				if err != nil {
-					errCh <- fmt.Errorf("[%s] %w", name, err)
-					return
-				}
-
-				if versions, ok := installedVersions[name]; ok {
-					if _, exists := versions[latest.Version]; exists {
-						logger.Info("%s는 이미 최신 버전(%s)입니다.", name, latest.Version)
-						return
-					}
-				}
-
-				safeName := filepath.Base(latest.Name)
-				binName := safeName
-				if latest.BinName != "" {
-					binName = latest.BinName
-				}
-				archiver := archive.NewArchiver(latest.Source, binName)
-				if err := pkg.InstallWithPackage(latest, fetcher, archiver, cfg.InstallPath); err != nil {
-					errCh <- fmt.Errorf("[%s] %w", name, err)
-				}
-			}(pkgName)
+		fetcher := &registry.GitHubRegistry{
+			Token: cfg.AuthToken,
+			URL:   cfg.RegistryURL,
 		}
 
-		wg.Wait()
-		close(errCh)
+		resolvedPackages, err := resolveDependencies(targetPackages, fetcher)
+		if err != nil {
+			logger.Error("Failed to resolve dependencies: %v", err)
+			os.Exit(1)
+		}
 
 		hasError := false
-		for err := range errCh {
-			logger.Error("Update failed: %v", err)
-			hasError = true
+		for _, latest := range resolvedPackages {
+			if versions, ok := installedVersions[latest.Name]; ok {
+				if _, exists := versions[latest.Version]; exists {
+					logger.Info("%s는 이미 최신 버전(%s)입니다.", latest.Name, latest.Version)
+					continue
+				}
+			}
+
+			safeName := filepath.Base(latest.Name)
+			binName := safeName
+			if latest.BinName != "" {
+				binName = latest.BinName
+			}
+			archiver := archive.NewArchiver(latest.Source, binName)
+			if err := pkg.InstallWithPackage(latest, fetcher, archiver, cfg.InstallPath); err != nil {
+				logger.Error("Update failed: [%s] %v", latest.Name, err)
+				hasError = true
+			}
 		}
 
 		if !hasError {

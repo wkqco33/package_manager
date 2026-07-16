@@ -104,3 +104,12 @@ func GetPackagesDir() (string, error) {
 	}
 	return paths.PackageDir, nil
 }
+
+// GetCacheDir는 로컬 다운로드 캐시 디렉터리 경로를 반환합니다.
+func GetCacheDir() (string, error) {
+	paths, err := platform.GetPaths()
+	if err != nil {
+		return "", apperr.Wrap(apperr.CodeFileSystem, err, "could not get platform paths")
+	}
+	return paths.CacheDir, nil
+}

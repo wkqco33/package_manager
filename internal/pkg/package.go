@@ -19,16 +19,31 @@ import (
 
 // Package는 패키지 메타데이터를 나타냅니다.
 type Package struct {
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Source      string `json:"source"`
-	RegistryURL string `json:"registry_url,omitempty"`
-	AssetID     int64  `json:"asset_id"` // 프라이빗 에셋 다운로드용 ID
-	Checksum    string `json:"checksum"`
-	Description string `json:"description"`
-	Author      string `json:"author"`
-	Homepage    string `json:"homepage"`
-	BinName     string `json:"bin_name"` // 실제 바이너리 이름 (레포지토리 이름과 다를 경우)
+	Name         string   `json:"name"`
+	Version      string   `json:"version"`
+	Source       string   `json:"source"`
+	RegistryURL  string   `json:"registry_url,omitempty"`
+	AssetID      int64    `json:"asset_id"` // 프라이빗 에셋 다운로드용 ID
+	Checksum     string   `json:"checksum"`
+	Description  string   `json:"description"`
+	Author       string   `json:"author"`
+	Homepage     string   `json:"homepage"`
+	BinName      string   `json:"bin_name"` // 실제 바이너리 이름 (레포지토리 이름과 다를 경우)
+	Dependencies []string `json:"dependencies,omitempty"`
+}
+
+// Validate는 패키지 구조체의 필수 필드들의 유효성을 검증합니다.
+func (p *Package) Validate() error {
+	if p.Name == "" {
+		return apperr.New(apperr.CodeInvalidInput, "package name is empty")
+	}
+	if p.Version == "" {
+		return apperr.New(apperr.CodeInvalidInput, "package version is empty")
+	}
+	if p.Source == "" {
+		return apperr.New(apperr.CodeInvalidInput, "package source URL is empty")
+	}
+	return nil
 }
 
 // RegistryFetcher는 레지스트리 메타데이터 조회/소스 다운로드 인터페이스입니다.
@@ -59,6 +74,10 @@ func Install(pkgName string, fetcher RegistryFetcher, archiver Archiver, install
 
 // InstallWithPackage는 이미 조회한 메타데이터로 설치를 수행합니다.
 func InstallWithPackage(p *Package, fetcher RegistryFetcher, archiver Archiver, installPath string) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+
 	// 이미 설치됐는지 확인
 	packagesDir, err := config.GetPackagesDir()
 	if err != nil {
@@ -84,19 +103,92 @@ func InstallWithPackage(p *Package, fetcher RegistryFetcher, archiver Archiver, 
 		return nil
 	}
 
-	logger.Info("Downloading and extracting %s version %s...", p.Name, p.Version)
-	body, size, err := fetcher.DownloadSource(p)
-	if err != nil {
-		return apperr.Wrap(apperr.CodeNetwork, err, "download error")
+	var cacheFilePath string
+	var useCache bool
+
+	cacheDir, err := config.GetCacheDir()
+	if err == nil {
+		_ = os.MkdirAll(cacheDir, 0755)
+		ext := ".tar.gz"
+		if strings.HasSuffix(strings.ToLower(p.Source), ".zip") {
+			ext = ".zip"
+		} else if strings.HasSuffix(strings.ToLower(p.Source), ".tgz") {
+			ext = ".tgz"
+		}
+		cacheFilePath = filepath.Join(cacheDir, fmt.Sprintf("%s-%s%s", safeName, p.Version, ext))
+
+		if _, err := os.Stat(cacheFilePath); err == nil {
+			useCache = true
+		}
 	}
 
-	bar := ui.NewProgressBar(size, 40, "Downloading")
-	progressBody := &ui.ProgressReader{Reader: body, Bar: bar}
-	defer progressBody.Close()
+	var archiveFile *os.File
+	var archiveSize int64
+
+	if useCache {
+		logger.Info("Using cached archive: %s", cacheFilePath)
+		file, err := os.Open(cacheFilePath)
+		if err != nil {
+			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to open cache file")
+		}
+		info, err := file.Stat()
+		if err != nil {
+			file.Close()
+			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to stat cache file")
+		}
+		archiveFile = file
+		archiveSize = info.Size()
+	} else {
+		logger.Info("Downloading %s version %s...", p.Name, p.Version)
+		body, size, err := fetcher.DownloadSource(p)
+		if err != nil {
+			return apperr.Wrap(apperr.CodeNetwork, err, "download error")
+		}
+		defer body.Close()
+
+		// 임시 캐시 파일을 생성하여 다운로드 스트리밍
+		tmpCacheFile, err := os.CreateTemp(cacheDir, "ppm-cache-*.tmp")
+		if err != nil {
+			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create temp cache file")
+		}
+		tmpCachePath := tmpCacheFile.Name()
+		defer func() {
+			tmpCacheFile.Close()
+			_ = os.Remove(tmpCachePath)
+		}()
+
+		bar := ui.NewProgressBar(size, 40, "Downloading")
+		progressBody := &ui.ProgressReader{Reader: body, Bar: bar}
+
+		archiveSize, err = io.Copy(tmpCacheFile, progressBody)
+		progressBody.Close()
+		if err != nil {
+			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to write cache file")
+		}
+		tmpCacheFile.Close()
+
+		// 다운로드 완료 시 최종 캐시 파일로 이동
+		if err := os.Rename(tmpCachePath, cacheFilePath); err != nil {
+			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to finalize cache file")
+		}
+
+		file, err := os.Open(cacheFilePath)
+		if err != nil {
+			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to open finalized cache file")
+		}
+		archiveFile = file
+	}
+	defer archiveFile.Close()
+
+	// 최종 파일에 대해 압축 해제 렌더링
+	bar := ui.NewProgressBar(archiveSize, 40, "Extracting")
+	progressReader := &ui.ProgressReader{Reader: archiveFile, Bar: bar}
 
 	logger.Debug("Extracting archive", "dest", extractDir)
-	if err := archiver.Extract(progressBody, extractDir); err != nil {
-		return apperr.Wrap(apperr.CodeArchive, err, "extraction error")
+	extractErr := archiver.Extract(progressReader, extractDir)
+	progressReader.Close()
+	if extractErr != nil {
+		return apperr.Wrap(apperr.CodeArchive, extractErr, "extraction error")
 	}
 
 	// 업데이트 기능을 위해 메타데이터 저장

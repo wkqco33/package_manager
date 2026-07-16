@@ -23,8 +23,12 @@ type GitHubRegistry struct {
 // GitHubRegistry가 pkg.RegistryFetcher를 구현하는지 확인
 var _ pkg.RegistryFetcher = (*GitHubRegistry)(nil)
 
-var defaultHTTPClient = &http.Client{
-	Timeout: 30 * time.Second,
+var apiHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
+var downloadHTTPClient = &http.Client{
+	Timeout: 10 * time.Minute,
 }
 
 type ghAsset struct {
@@ -46,10 +50,11 @@ type ghTag struct {
 }
 
 type ppmMeta struct {
-	Description string `json:"description"`
-	Author      string `json:"author"`
-	Homepage    string `json:"homepage"`
-	BinName     string `json:"bin_name"`
+	Description  string   `json:"description"`
+	Author       string   `json:"author"`
+	Homepage     string   `json:"homepage"`
+	BinName      string   `json:"bin_name"`
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
 var publicGitHubAPIURL = "https://api.github.com"
@@ -89,6 +94,7 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	p.Author = meta.Author
 	p.Homepage = meta.Homepage
 	p.BinName = meta.BinName
+	p.Dependencies = meta.Dependencies
 
 	return p, nil
 }
@@ -131,18 +137,28 @@ func (g *GitHubRegistry) apiBaseCandidates() []string {
 	return []string{baseURL, publicGitHubAPIURL}
 }
 
-func (g *GitHubRegistry) fetchPPMMetadata(baseURL, pkgName string) ppmMeta {
-	contentURL := fmt.Sprintf("%s/repos/%s/contents/ppm.json", baseURL, pkgName)
-	req, err := http.NewRequest("GET", contentURL, nil)
+func (g *GitHubRegistry) newRequest(method, url, acceptHeader string) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		return ppmMeta{}
+		return nil, apperr.Wrap(apperr.CodeNetwork, err, "failed to create http request")
 	}
-	req.Header.Set("Accept", "application/vnd.github.v3.raw")
+	if acceptHeader != "" {
+		req.Header.Set("Accept", acceptHeader)
+	}
 	if g.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+g.Token)
 	}
+	return req, nil
+}
 
-	resp, err := defaultHTTPClient.Do(req)
+func (g *GitHubRegistry) fetchPPMMetadata(baseURL, pkgName string) ppmMeta {
+	contentURL := fmt.Sprintf("%s/repos/%s/contents/ppm.json", baseURL, pkgName)
+	req, err := g.newRequest("GET", contentURL, "application/vnd.github.v3.raw")
+	if err != nil {
+		return ppmMeta{}
+	}
+
+	resp, err := apiHTTPClient.Do(req)
 	if err != nil {
 		return ppmMeta{}
 	}
@@ -159,16 +175,12 @@ func (g *GitHubRegistry) fetchPPMMetadata(baseURL, pkgName string) ppmMeta {
 }
 
 func (g *GitHubRegistry) fetchLatestRelease(pkgName, apiURL string) (ghRelease, error) {
-	req, err := http.NewRequest("GET", apiURL, nil)
+	req, err := g.newRequest("GET", apiURL, "application/vnd.github.v3+json")
 	if err != nil {
-		return ghRelease{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to create github api request")
-	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	if g.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+g.Token)
+		return ghRelease{}, err
 	}
 
-	resp, err := defaultHTTPClient.Do(req)
+	resp, err := apiHTTPClient.Do(req)
 	if err != nil {
 		return ghRelease{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github api request")
 	}
@@ -190,16 +202,12 @@ func (g *GitHubRegistry) fetchLatestRelease(pkgName, apiURL string) (ghRelease, 
 
 func (g *GitHubRegistry) fetchLatestTag(pkgName, baseURL string) (ghTag, error) {
 	tagsURL := fmt.Sprintf("%s/repos/%s/tags", baseURL, pkgName)
-	req, err := http.NewRequest("GET", tagsURL, nil)
+	req, err := g.newRequest("GET", tagsURL, "application/vnd.github.v3+json")
 	if err != nil {
-		return ghTag{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to create github tags request")
-	}
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	if g.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+g.Token)
+		return ghTag{}, err
 	}
 
-	resp, err := defaultHTTPClient.Do(req)
+	resp, err := apiHTTPClient.Do(req)
 	if err != nil {
 		return ghTag{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github tags request")
 	}
@@ -304,20 +312,16 @@ func (g *GitHubRegistry) DownloadSource(p *pkg.Package) (io.ReadCloser, int64, e
 		downloadURL = fmt.Sprintf("%s/repos/%s/releases/assets/%d", strings.TrimRight(assetBaseURL, "/"), p.Name, p.AssetID)
 	}
 
-	req, err := http.NewRequest("GET", downloadURL, nil)
+	acceptHeader := ""
+	if p.AssetID > 0 {
+		acceptHeader = "application/octet-stream"
+	}
+	req, err := g.newRequest("GET", downloadURL, acceptHeader)
 	if err != nil {
-		return nil, 0, apperr.Wrap(apperr.CodeNetwork, err, "failed to create download request")
+		return nil, 0, err
 	}
 
-	if g.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+g.Token)
-		// 릴리스 에셋 API를 호출할 때는 이 헤더가 필수입니다.
-		if p.AssetID > 0 {
-			req.Header.Set("Accept", "application/octet-stream")
-		}
-	}
-
-	resp, err := defaultHTTPClient.Do(req)
+	resp, err := downloadHTTPClient.Do(req)
 	if err != nil {
 		return nil, 0, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute download request")
 	}
