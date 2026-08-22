@@ -26,7 +26,7 @@ func defaultInstallDependencies() installDependencies {
 	return installDependencies{
 		LoadConfig: config.LoadConfig,
 		NewFetcher: func(cfg *config.Config) pkg.RegistryFetcher {
-			return registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries)
+			return registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum)
 		},
 		NewArchiver: archive.NewArchiver,
 	}

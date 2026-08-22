@@ -56,6 +56,12 @@ type RegistryFetcher interface {
 	DownloadSource(pkg *Package) (io.ReadCloser, int64, error) // 소스 아카이브의 리더와 크기 반환
 }
 
+// ResumableRegistryFetcher optionally supports HTTP Range-based downloads.
+type ResumableRegistryFetcher interface {
+	RegistryFetcher
+	DownloadSourceAt(pkg *Package, offset int64) (io.ReadCloser, int64, bool, error)
+}
+
 // Archiver는 아카이브 해제/바이너리 링크 인터페이스입니다.
 type Archiver interface {
 	Extract(r io.Reader, destDir string) error
@@ -162,35 +168,49 @@ func InstallWithPackageOptions(p *Package, fetcher RegistryFetcher, archiver Arc
 			return apperr.New(apperr.CodeNetwork, "offline mode: %s %s가 캐시에 없습니다", p.Name, p.Version)
 		}
 		logger.Info("Downloading %s version %s...", p.Name, p.Version)
-		body, size, err := fetcher.DownloadSource(p)
+		partPath := cacheFilePath + ".part"
+		var offset int64
+		if info, statErr := os.Stat(partPath); statErr == nil {
+			offset = info.Size()
+		}
+		var body io.ReadCloser
+		var size int64
+		var resumed bool
+		if resumable, ok := fetcher.(ResumableRegistryFetcher); ok {
+			body, size, resumed, err = resumable.DownloadSourceAt(p, offset)
+		} else {
+			body, size, err = fetcher.DownloadSource(p)
+		}
 		if err != nil {
 			return apperr.Wrap(apperr.CodeNetwork, err, "download error")
 		}
 		defer body.Close()
-
-		// 임시 캐시 파일을 생성하여 다운로드 스트리밍
-		tmpCacheFile, err := os.CreateTemp(cacheDir, "ppm-cache-*.tmp")
-		if err != nil {
-			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create temp cache file")
+		if !resumed {
+			offset = 0
 		}
-		tmpCachePath := tmpCacheFile.Name()
-		defer func() {
-			tmpCacheFile.Close()
-			_ = os.Remove(tmpCachePath)
-		}()
-
-		bar := ui.NewProgressBar(size, 40, "Downloading")
+		flags := os.O_CREATE | os.O_WRONLY
+		if offset > 0 {
+			flags |= os.O_APPEND
+		} else {
+			flags |= os.O_TRUNC
+		}
+		partFile, err := os.OpenFile(partPath, flags, 0600)
+		if err != nil {
+			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to open partial cache")
+		}
+		bar := ui.NewProgressBar(size+offset, 40, "Downloading")
 		progressBody := &ui.ProgressReader{Reader: body, Bar: bar}
-
-		archiveSize, err = io.Copy(tmpCacheFile, progressBody)
+		written, err := io.Copy(partFile, progressBody)
 		progressBody.Close()
+		closeErr := partFile.Close()
 		if err != nil {
 			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to write cache file")
 		}
-		tmpCacheFile.Close()
-
-		// 다운로드 완료 시 최종 캐시 파일로 이동
-		if err := os.Rename(tmpCachePath, cacheFilePath); err != nil {
+		if closeErr != nil {
+			return apperr.Wrap(apperr.CodeFileSystem, closeErr, "failed to close cache file")
+		}
+		archiveSize = offset + written
+		if err := os.Rename(partPath, cacheFilePath); err != nil {
 			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to finalize cache file")
 		}
 

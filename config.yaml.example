@@ -8,6 +8,13 @@ registry_url: https://api.github.com
 #   - https://packages.example.com/api
 #   - https://mirror.example.com/api
 
+# 비어 있지 않으면 해당 GitHub owner만 설치 허용
+# trusted_owners:
+#   - my-company
+
+# true이면 release에 .sha256 또는 .sha256sum asset이 없을 때 설치를 거부
+# require_checksum: true
+
 # 프라이빗 레포지토리 접근을 위한 인증 토큰 (필수)
 auth_token: "your_personal_access_token_here"
 

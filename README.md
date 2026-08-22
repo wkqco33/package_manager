@@ -180,6 +180,7 @@ ppm config set install_path ~/.local/bin
 - `registry_url`: 기본 레지스트리 API URL (기본값: `https://api.github.com`).
 - `registries`: 기본 레지스트리 실패 시 순서대로 시도할 mirror API URL 목록입니다. 마지막에는 GitHub 공개 API가 자동으로 시도됩니다.
 - `auth_token`: GitHub Personal Access Token (PAT)
+- `require_checksum`: Release의 `.sha256` 또는 `.sha256sum` asset을 필수로 검증합니다. 기본값은 `false`입니다.
 - `install_path`: 바이너리가 설치될 경로 (기본값: `~/.local/bin` 또는 Windows 사용자 홈 `.local\bin`)
 
 설정 파일에는 GitHub Personal Access Token이 저장되므로 파일 권한을 다른 사용자에게 공개하지 마세요. `ppm config show`는 토큰을 마스킹해서 출력합니다.

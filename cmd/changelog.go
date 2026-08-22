@@ -20,7 +20,7 @@ var changelogCmd = &wcli.Command{
 		if err != nil {
 			return err
 		}
-		var fetcher pkg.MetadataFetcher = registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries)
+		var fetcher pkg.MetadataFetcher = registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum)
 		p, err := fetcher.GetMetadata(ctx.Args[0])
 		if err != nil {
 			return err

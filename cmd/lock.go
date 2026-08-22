@@ -23,7 +23,7 @@ var lockCmd = &wcli.Command{
 		if err != nil {
 			return err
 		}
-		fetcher := registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries)
+		fetcher := registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum)
 		packages, err := pkg.ResolveDependencies(ctx.Args, fetcher)
 		if err != nil {
 			return err

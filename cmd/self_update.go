@@ -37,7 +37,7 @@ var selfUpdateCmd = &wcli.Command{
 		if installPath == "" {
 			installPath = filepath.Dir(current)
 		}
-		fetcher := registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries)
+		fetcher := registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum)
 		p, err := fetcher.GetMetadata(selfUpdatePackage)
 		if err != nil {
 			return err

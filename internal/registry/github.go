@@ -17,14 +17,16 @@ import (
 
 // GitHubRegistry는 GitHub용 pkg.RegistryFetcher 구현체입니다.
 type GitHubRegistry struct {
-	Token   string
-	URL     string // 기본값: https://api.github.com
-	Mirrors []string
+	Token           string
+	URL             string // 기본값: https://api.github.com
+	Mirrors         []string
+	TrustedOwners   []string
+	RequireChecksum bool
 }
 
 // NewGitHubRegistry creates a registry client with the primary URL and optional mirrors.
-func NewGitHubRegistry(token, primary string, mirrors []string) *GitHubRegistry {
-	return &GitHubRegistry{Token: token, URL: primary, Mirrors: append([]string(nil), mirrors...)}
+func NewGitHubRegistry(token, primary string, mirrors, trustedOwners []string, requireChecksum bool) *GitHubRegistry {
+	return &GitHubRegistry{Token: token, URL: primary, Mirrors: append([]string(nil), mirrors...), TrustedOwners: append([]string(nil), trustedOwners...), RequireChecksum: requireChecksum}
 }
 
 // GitHubRegistry가 pkg.RegistryFetcher를 구현하는지 확인
@@ -107,6 +109,46 @@ var publicGitHubAPIURL = "https://api.github.com"
 var errLatestReleaseNotFound = errors.New("github latest release not found")
 var errRepositoryNotFound = errors.New("github repository not found")
 
+func (g *GitHubRegistry) fetchAssetChecksum(baseURL, pkgName string, assets []ghAsset, assetName string) (string, error) {
+	var checksumAsset *ghAsset
+	for i := range assets {
+		if assets[i].Name == assetName+".sha256" || assets[i].Name == assetName+".sha256sum" {
+			checksumAsset = &assets[i]
+			break
+		}
+	}
+	if checksumAsset == nil {
+		return "", fmt.Errorf("checksum asset for %s not found", assetName)
+	}
+	endpoint := fmt.Sprintf("%s/repos/%s/releases/assets/%d", strings.TrimRight(baseURL, "/"), pkgName, checksumAsset.Id)
+	req, err := g.newRequest("GET", endpoint, "application/octet-stream")
+	if err != nil {
+		return "", err
+	}
+	resp, err := apiHTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("checksum asset returned HTTP %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 || len(fields[0]) != 64 {
+		return "", fmt.Errorf("invalid SHA-256 checksum")
+	}
+	for _, c := range fields[0] {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return "", fmt.Errorf("invalid SHA-256 checksum")
+		}
+	}
+	return strings.ToLower(fields[0]), nil
+}
+
 // Search searches repositories visible to the configured GitHub account.
 func (g *GitHubRegistry) Search(query string) ([]SearchResult, error) {
 	base := strings.TrimRight(g.URL, "/")
@@ -135,6 +177,9 @@ func (g *GitHubRegistry) Search(query string) ([]SearchResult, error) {
 
 // GetMetadata는 GitHub 저장소의 최신 릴리스 메타데이터를 조회합니다.
 func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
+	if len(g.TrustedOwners) > 0 && !g.isTrustedOwner(pkgName) {
+		return nil, apperr.New(apperr.CodeRegistry, "repository owner for %s is not trusted", pkgName)
+	}
 	baseURL, rel, err := g.resolveReleaseMetadata(pkgName)
 	if err != nil {
 		return nil, err
@@ -155,6 +200,11 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	if bestAsset != nil {
 		p.Source = bestAsset.BrowserDownloadUrl
 		p.AssetID = bestAsset.Id
+		if checksum, checksumErr := g.fetchAssetChecksum(baseURL, pkgName, rel.Assets, bestAsset.Name); checksumErr == nil {
+			p.Checksum = checksum
+		} else if g.RequireChecksum {
+			return nil, apperr.Wrap(apperr.CodeRegistry, checksumErr, "required checksum asset is unavailable")
+		}
 	} else if rel.TarballUrl != "" {
 		p.Source = rel.TarballUrl
 	} else {
@@ -197,6 +247,16 @@ func (g *GitHubRegistry) resolveReleaseMetadata(pkgName string) (string, ghRelea
 	}
 
 	return "", ghRelease{}, apperr.New(apperr.CodeRegistry, "repository %s was not found. Check the owner/repo spelling, auth_token, and registry_url.", pkgName)
+}
+
+func (g *GitHubRegistry) isTrustedOwner(pkgName string) bool {
+	owner := strings.SplitN(pkgName, "/", 2)[0]
+	for _, trusted := range g.TrustedOwners {
+		if strings.EqualFold(owner, strings.TrimSpace(trusted)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *GitHubRegistry) apiBaseCandidates() []string {
@@ -380,41 +440,39 @@ func (g *GitHubRegistry) findBestAsset(assets []ghAsset) *ghAsset {
 	return bestAsset
 }
 
-// DownloadSource는 소스 아카이브 리더를 반환합니다.
+// DownloadSource는 소스 아카이브를 처음부터 반환합니다.
 func (g *GitHubRegistry) DownloadSource(p *pkg.Package) (io.ReadCloser, int64, error) {
-	downloadURL := p.Source
+	body, size, _, err := g.DownloadSourceAt(p, 0)
+	return body, size, err
+}
 
-	// 프라이빗 저장소의 릴리스 에셋인 경우 전용 API URL 사용
+// DownloadSourceAt uses HTTP Range when offset is non-zero. The bool result
+// tells callers whether the server accepted the range (206 Partial Content).
+func (g *GitHubRegistry) DownloadSourceAt(p *pkg.Package, offset int64) (io.ReadCloser, int64, bool, error) {
+	downloadURL := p.Source
 	if p.AssetID > 0 {
-		// p.Source가 "https://github.com/owner/repo/releases/download/v1.0.0/asset.zip" 형태라면
-		// 이를 "https://api.github.com/repos/owner/repo/releases/assets/asset_id" 형태로 변환하거나
-		// p.Name(owner/repo)을 활용하여 직접 생성합니다.
 		assetBaseURL := p.RegistryURL
 		if assetBaseURL == "" {
 			assetBaseURL = g.URL
 		}
 		downloadURL = fmt.Sprintf("%s/repos/%s/releases/assets/%d", strings.TrimRight(assetBaseURL, "/"), p.Name, p.AssetID)
 	}
-
 	acceptHeader := ""
 	if p.AssetID > 0 {
 		acceptHeader = "application/octet-stream"
 	}
-	req, err := g.newRequest("GET", downloadURL, acceptHeader)
-	if err != nil {
-		return nil, 0, err
-	}
-
 	var lastErr error
 	for attempt := 1; attempt <= downloadMaxAttempts; attempt++ {
-		// 요청 본문은 재시도마다 새로 생성해야 합니다.
-		req, err = g.newRequest("GET", downloadURL, acceptHeader)
+		req, err := g.newRequest("GET", downloadURL, acceptHeader)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, false, err
+		}
+		if offset > 0 {
+			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 		}
 		resp, err := downloadHTTPClient.Do(req)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			return resp.Body, resp.ContentLength, nil
+		if err == nil && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent) {
+			return resp.Body, resp.ContentLength, offset > 0 && resp.StatusCode == http.StatusPartialContent, nil
 		}
 		if err != nil {
 			lastErr = err
@@ -429,5 +487,5 @@ func (g *GitHubRegistry) DownloadSource(p *pkg.Package) (io.ReadCloser, int64, e
 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
 		}
 	}
-	return nil, 0, apperr.Wrap(apperr.CodeNetwork, lastErr, "failed to download source after retries")
+	return nil, 0, false, apperr.Wrap(apperr.CodeNetwork, lastErr, "failed to download source after retries")
 }
