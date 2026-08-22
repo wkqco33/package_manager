@@ -28,7 +28,7 @@ func defaultUpdateDependencies() updateDependencies {
 		GetPackagesDir: config.GetPackagesDir,
 		ListInstalled:  pkg.ListInstalled,
 		NewFetcher: func(cfg *config.Config) pkg.RegistryFetcher {
-			return registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum)
+			return registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum, cfg.RequireSignature, cfg.SignaturePublicKey)
 		},
 		NewArchiver: archive.NewArchiver,
 	}

@@ -23,7 +23,7 @@ func defaultInfoDependencies() infoDependencies {
 	return infoDependencies{
 		LoadConfig: config.LoadConfig,
 		NewFetcher: func(cfg *config.Config) pkg.MetadataFetcher {
-			return registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum)
+			return registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum, cfg.RequireSignature, cfg.SignaturePublicKey)
 		},
 	}
 }

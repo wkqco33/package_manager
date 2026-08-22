@@ -12,12 +12,14 @@ import (
 
 // Config는 애플리케이션 설정입니다.
 type Config struct {
-	RegistryURL     string   `yaml:"registry_url"`
-	Registries      []string `yaml:"registries,omitempty"`
-	TrustedOwners   []string `yaml:"trusted_owners,omitempty"`
-	RequireChecksum bool     `yaml:"require_checksum,omitempty"`
-	AuthToken       string   `yaml:"auth_token"`
-	InstallPath     string   `yaml:"install_path"`
+	RegistryURL        string   `yaml:"registry_url"`
+	Registries         []string `yaml:"registries,omitempty"`
+	TrustedOwners      []string `yaml:"trusted_owners,omitempty"`
+	RequireChecksum    bool     `yaml:"require_checksum,omitempty"`
+	RequireSignature   bool     `yaml:"require_signature,omitempty"`
+	SignaturePublicKey string   `yaml:"signature_public_key,omitempty"`
+	AuthToken          string   `yaml:"auth_token"`
+	InstallPath        string   `yaml:"install_path"`
 }
 
 var ErrConfigNotFound = apperr.New(apperr.CodeConfig, "configuration file not found")

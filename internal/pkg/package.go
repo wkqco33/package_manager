@@ -1,7 +1,9 @@
 package pkg
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -27,6 +29,8 @@ type Package struct {
 	RegistryURL           string            `json:"registry_url,omitempty"`
 	AssetID               int64             `json:"asset_id"` // 프라이빗 에셋 다운로드용 ID
 	Checksum              string            `json:"checksum"`
+	Signature             string            `json:"signature,omitempty"`
+	SignaturePublicKey    string            `json:"signature_public_key,omitempty"`
 	Description           string            `json:"description"`
 	ReleaseNotes          string            `json:"release_notes,omitempty"`
 	Author                string            `json:"author"`
@@ -227,6 +231,11 @@ func InstallWithPackageOptions(p *Package, fetcher RegistryFetcher, archiver Arc
 			_ = os.Remove(cacheFilePath)
 		}
 		return apperr.Wrap(apperr.CodeArchive, err, "archive checksum verification failed")
+	}
+	if p.Signature != "" {
+		if err := verifySignature(archiveFile, p.Signature, p.SignaturePublicKey); err != nil {
+			return apperr.Wrap(apperr.CodeArchive, err, "archive signature verification failed")
+		}
 	}
 
 	// 최종 파일에 대해 압축 해제 렌더링
@@ -456,6 +465,28 @@ func hasPackageMain(dir string) bool {
 	}
 
 	return false
+}
+
+func verifySignature(file *os.File, encodedSignature, encodedPublicKey string) error {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	signature, err := base64.StdEncoding.DecodeString(encodedSignature)
+	if err != nil {
+		return fmt.Errorf("invalid signature encoding: %w", err)
+	}
+	publicKey, err := base64.StdEncoding.DecodeString(encodedPublicKey)
+	if err != nil || len(publicKey) != ed25519.PublicKeySize {
+		return fmt.Errorf("invalid Ed25519 public key")
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(ed25519.PublicKey(publicKey), data, signature) {
+		return fmt.Errorf("signature does not match archive")
+	}
+	return nil
 }
 
 func verifyChecksum(file *os.File, expected string) error {

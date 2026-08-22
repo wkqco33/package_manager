@@ -22,7 +22,7 @@ var searchCmd = &wcli.Command{
 		if err != nil {
 			return err
 		}
-		results, err := registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum).Search(ctx.Args[0])
+		results, err := registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum, cfg.RequireSignature, cfg.SignaturePublicKey).Search(ctx.Args[0])
 		if err != nil {
 			return err
 		}

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,16 +18,18 @@ import (
 
 // GitHubRegistry는 GitHub용 pkg.RegistryFetcher 구현체입니다.
 type GitHubRegistry struct {
-	Token           string
-	URL             string // 기본값: https://api.github.com
-	Mirrors         []string
-	TrustedOwners   []string
-	RequireChecksum bool
+	Token              string
+	URL                string // 기본값: https://api.github.com
+	Mirrors            []string
+	TrustedOwners      []string
+	RequireChecksum    bool
+	RequireSignature   bool
+	SignaturePublicKey string
 }
 
 // NewGitHubRegistry creates a registry client with the primary URL and optional mirrors.
-func NewGitHubRegistry(token, primary string, mirrors, trustedOwners []string, requireChecksum bool) *GitHubRegistry {
-	return &GitHubRegistry{Token: token, URL: primary, Mirrors: append([]string(nil), mirrors...), TrustedOwners: append([]string(nil), trustedOwners...), RequireChecksum: requireChecksum}
+func NewGitHubRegistry(token, primary string, mirrors, trustedOwners []string, requireChecksum, requireSignature bool, publicKey string) *GitHubRegistry {
+	return &GitHubRegistry{Token: token, URL: primary, Mirrors: append([]string(nil), mirrors...), TrustedOwners: append([]string(nil), trustedOwners...), RequireChecksum: requireChecksum, RequireSignature: requireSignature, SignaturePublicKey: publicKey}
 }
 
 // GitHubRegistry가 pkg.RegistryFetcher를 구현하는지 확인
@@ -108,6 +111,41 @@ var publicGitHubAPIURL = "https://api.github.com"
 
 var errLatestReleaseNotFound = errors.New("github latest release not found")
 var errRepositoryNotFound = errors.New("github repository not found")
+
+func (g *GitHubRegistry) fetchAssetSignature(baseURL, pkgName string, assets []ghAsset, assetName string) (string, error) {
+	var signatureAsset *ghAsset
+	for i := range assets {
+		if assets[i].Name == assetName+".sig" || assets[i].Name == assetName+".asc" {
+			signatureAsset = &assets[i]
+			break
+		}
+	}
+	if signatureAsset == nil {
+		return "", fmt.Errorf("signature asset for %s not found", assetName)
+	}
+	endpoint := fmt.Sprintf("%s/repos/%s/releases/assets/%d", strings.TrimRight(baseURL, "/"), pkgName, signatureAsset.Id)
+	req, err := g.newRequest("GET", endpoint, "application/octet-stream")
+	if err != nil {
+		return "", err
+	}
+	resp, err := apiHTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("signature asset returned HTTP %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return "", err
+	}
+	encoded := strings.TrimSpace(string(data))
+	if decoded, decodeErr := base64.StdEncoding.DecodeString(encoded); decodeErr == nil {
+		return base64.StdEncoding.EncodeToString(decoded), nil
+	}
+	return "", fmt.Errorf("invalid base64 signature")
+}
 
 func (g *GitHubRegistry) fetchAssetChecksum(baseURL, pkgName string, assets []ghAsset, assetName string) (string, error) {
 	var checksumAsset *ghAsset
@@ -204,6 +242,11 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 			p.Checksum = checksum
 		} else if g.RequireChecksum {
 			return nil, apperr.Wrap(apperr.CodeRegistry, checksumErr, "required checksum asset is unavailable")
+		}
+		if signature, signatureErr := g.fetchAssetSignature(baseURL, pkgName, rel.Assets, bestAsset.Name); signatureErr == nil {
+			p.Signature = signature
+		} else if g.RequireSignature {
+			return nil, apperr.Wrap(apperr.CodeRegistry, signatureErr, "required signature asset is unavailable")
 		}
 	} else if rel.TarballUrl != "" {
 		p.Source = rel.TarballUrl

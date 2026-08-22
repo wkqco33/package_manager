@@ -33,7 +33,7 @@ var outdatedCmd = &wcli.Command{Use: "outdated", Short: "업데이트 가능한 
 	if err != nil {
 		return err
 	}
-	fetcher := registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum)
+	fetcher := registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries, cfg.TrustedOwners, cfg.RequireChecksum, cfg.RequireSignature, cfg.SignaturePublicKey)
 	items := make([]outdatedItem, 0)
 	for _, p := range installed {
 		if p == nil || p.Name == "" || p.Version == "" {
