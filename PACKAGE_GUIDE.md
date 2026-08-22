@@ -90,9 +90,21 @@ GitHub Release의 Assets 섹션에 업로드할 때 아래 명명 규칙을 준�
 * **`homepage`**: 패키지 관련 문서 또는 웹사이트 URL입니다.
 * **`dependencies`**: 패키지 동작에 필요한 다른 `ppm` 패키지들의 의존성 제약 목록입니다 (`owner/repo: constraint`).
 
+### 매니페스트 초기화 (`ppm package init`)
+새 프로젝트 디렉토리에서 매니페스트를 대화형/플래그로 손쉽게 생성할 수 있습니다.
+```bash
+# 현재 디렉토리에 기본 ppm.json 생성 (바이너리명은 디렉토리명으로 자동 설정)
+ppm package init
+
+# 특정 프로젝트 디렉토리에 플래그로 매니페스트 생성
+ppm package init ./my-project --bin-name my-tool --description "핵심 도구" --author "팀명" --homepage "https://github.com/my-org/my-tool"
+```
+
 ### 매니페스트 유효성 검증
 로컬에서 작성한 `ppm.json`의 유효성을 검사할 수 있습니다.
 ```bash
+ppm package validate [ppm.json 경로]
+# 또는
 ppm manifest validate [ppm.json 경로]
 ```
 

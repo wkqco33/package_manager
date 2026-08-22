@@ -161,6 +161,17 @@ ppm cache list
 ppm cache clean
 ```
 
+### 6. 패키지 개발 및 가이드 확인
+
+패키지 배포 가이드를 확인하거나 프로젝트에 `ppm.json` 매니페스트를 생성합니다.
+
+```bash
+ppm package              # 패키지 등록 및 배포 가이드(PACKAGE_GUIDE.md) 확인
+ppm package init         # 현재 디렉토리에 ppm.json 매니페스트 생성
+ppm package init ./path --bin-name my-app # 특정 경로 및 바이너리명 지정 생성
+ppm package validate     # ppm.json 매니페스트 유효성 검증
+```
+
 ## 설정 상세 (`config.yaml`)
 
 설정 파일은 `ppm init`으로 생성할 수 있으며, 커맨드로 조회하거나 변경할 수도 있습니다.
