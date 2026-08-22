@@ -14,7 +14,28 @@
 
 ## 설치
 
-### GitHub Release에서 설치 (권장)
+### curl 설치 스크립트 (Linux/macOS)
+
+지원되는 Linux 또는 macOS에서는 저장소에 포함된 설치 스크립트를 사용할 수 있습니다. 스크립트는 운영체제와 아키텍처를 감지하고, Release asset과 SHA-256 checksum을 다운로드한 뒤 검증을 통과한 바이너리만 `~/.local/bin/ppm`에 설치합니다.
+
+```bash
+curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+  https://raw.githubusercontent.com/wkqco33/package_manager/master/install.sh \
+  -o /tmp/ppm-install.sh
+sh /tmp/ppm-install.sh
+rm /tmp/ppm-install.sh
+```
+
+스크립트를 실행하기 전에 내용을 검토하는 것을 권장합니다. 특정 버전을 설치하거나 경로를 변경할 수도 있습니다.
+
+```bash
+# 위의 다운로드 명령을 다시 실행한 뒤
+PPM_VERSION=v1.0.0 PPM_INSTALL_DIR="$HOME/.local/bin" sh /tmp/ppm-install.sh
+```
+
+Windows 사용자는 [Releases](https://github.com/wkqco33/package_manager/releases)에서 `.zip` asset을 직접 다운로드하세요.
+
+### GitHub Release에서 직접 설치
 
 [Releases](https://github.com/wkqco33/package_manager/releases)에서 운영체제와 CPU 아키텍처에 맞는 아카이브를 다운로드하세요.
 
