@@ -4,10 +4,12 @@ import (
 	"archive/tar"
 	"bufio"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"ppm/internal/apperr"
 	"ppm/internal/pkg"
@@ -44,10 +46,16 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 			return apperr.Wrap(apperr.CodeArchive, err, "failed to read tar header")
 		}
 
-		target := filepath.Join(destDir, header.Name)
+		target, err := archiveTargetPath(destDir, header.Name)
+		if err != nil {
+			return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive path %q", header.Name)
+		}
 
 		switch header.Typeflag {
 		case tar.TypeDir:
+			if err := ensureNoSymlinkPath(destDir, target); err != nil {
+				return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive directory %q", header.Name)
+			}
 			if !dirsCreated[target] {
 				if err := os.MkdirAll(target, 0755); err != nil {
 					return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create dir in archive")
@@ -55,6 +63,9 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 				dirsCreated[target] = true
 			}
 		case tar.TypeReg:
+			if err := ensureNoSymlinkPath(destDir, target); err != nil {
+				return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive file %q", header.Name)
+			}
 			// 상위 디렉터리 보장
 			parent := filepath.Dir(target)
 			if !dirsCreated[parent] {
@@ -71,9 +82,14 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 			}
 
 			bw := bufio.NewWriterSize(outFile, 64*1024)
-			if _, err := io.Copy(bw, tr); err != nil {
+			n, copyErr := io.Copy(bw, io.LimitReader(tr, maxExtractedFileSize+1))
+			if copyErr != nil {
 				outFile.Close()
-				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to write file")
+				return apperr.Wrap(apperr.CodeFileSystem, copyErr, "failed to write file")
+			}
+			if n > maxExtractedFileSize {
+				outFile.Close()
+				return apperr.New(apperr.CodeArchive, "archive member %q exceeds the maximum extracted file size", header.Name)
 			}
 			if err := bw.Flush(); err != nil {
 				outFile.Close()
@@ -81,13 +97,78 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 			}
 			outFile.Close()
 		case tar.TypeSymlink:
-			// 유닉스 계열에서는 심볼릭 링크가 자주 사용됩니다.
-			// Windows는 제외하고 가능한 경우만 생성합니다.
+			// 링크 자체와 링크가 가리키는 경로 모두 추출 디렉터리 안에 있어야 합니다.
 			if runtime.GOOS != "windows" {
+				if err := ensureNoSymlinkPath(destDir, target); err != nil {
+					return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive symlink %q", header.Name)
+				}
+				linkTarget := filepath.Join(filepath.Dir(target), header.Linkname)
+				if err := ensureWithinRoot(destDir, linkTarget); err != nil {
+					return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive symlink target %q", header.Linkname)
+				}
 				if err := os.Symlink(header.Linkname, target); err != nil {
 					return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create symlink %s", header.Name)
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func archiveTargetPath(root, name string) (string, error) {
+	targetAbs, err := filepath.Abs(filepath.Join(root, name))
+	if err != nil {
+		return "", err
+	}
+	if err := ensureWithinRoot(root, targetAbs); err != nil {
+		return "", err
+	}
+	return targetAbs, nil
+}
+
+func ensureWithinRoot(root, target string) error {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(rootAbs, targetAbs)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("path escapes destination directory")
+	}
+	return nil
+}
+
+func ensureNoSymlinkPath(root, target string) error {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(rootAbs, target)
+	if err != nil {
+		return err
+	}
+	current := rootAbs
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		if part == "." || part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("path contains symbolic link: %s", current)
 		}
 	}
 	return nil

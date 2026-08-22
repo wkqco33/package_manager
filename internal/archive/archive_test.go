@@ -65,6 +65,67 @@ func TestTarArchiver_Extract(t *testing.T) {
 	}
 }
 
+func TestTarArchiver_RejectsUnsafePaths(t *testing.T) {
+	tmpDir := t.TempDir()
+	outside := filepath.Join(tmpDir, "escape.txt")
+
+	tests := []struct {
+		name   string
+		header tar.Header
+	}{
+		{
+			name:   "parent traversal",
+			header: tar.Header{Name: "../escape.txt", Mode: 0644, Size: 4},
+		},
+		{
+			name:   "nested parent traversal",
+			header: tar.Header{Name: "nested/../../escape.txt", Mode: 0644, Size: 4},
+		},
+		{
+			name:   "external symlink",
+			header: tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "../../escape.txt"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			destDir := t.TempDir()
+			archiveData := createTarGZ(t, []tar.Header{tt.header}, []string{"evil"})
+			err := (&TarArchiver{}).Extract(bytes.NewReader(archiveData), destDir)
+			if err == nil {
+				t.Fatal("expected unsafe archive path to be rejected")
+			}
+			if _, statErr := os.Stat(outside); !os.IsNotExist(statErr) {
+				t.Fatalf("archive wrote outside destination: %v", statErr)
+			}
+		})
+	}
+}
+
+func createTarGZ(t *testing.T, headers []tar.Header, bodies []string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gzw)
+	for i, header := range headers {
+		if err := tw.WriteHeader(&header); err != nil {
+			t.Fatal(err)
+		}
+		if header.Typeflag == 0 || header.Typeflag == tar.TypeReg {
+			if _, err := tw.Write([]byte(bodies[i])); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
 func TestTarArchiver_Link(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "ppm-link-test-*")
 	if err != nil {

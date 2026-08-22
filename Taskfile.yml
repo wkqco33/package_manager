@@ -5,7 +5,7 @@
 # 설치: https://taskfile.dev/installation
 #   go install github.com/go-task/task/v3/cmd/task@latest
 
-version: '3'
+version: "3"
 
 vars:
   BINARY_NAME: ppm
@@ -16,7 +16,7 @@ vars:
     sh: git describe --tags --abbrev=0 2>/dev/null || echo dev
   # 빌드 플래그 (성능 최적화 및 바이너리 크기 감소)
   # 명령에서 -ldflags="{{.LDFLAGS}}" 처럼 따옴표로 감싸 하나의 인자로 전달합니다.
-  LDFLAGS: '-s -w -X ppm/cmd.Version={{.VERSION}}'
+  LDFLAGS: "-s -w -X ppm/cmd.Version={{.VERSION}}"
   # 로컬 설치 경로 (OS별로 분기)
   INSTALL_DIR: '{{if eq OS "windows"}}{{.USERPROFILE}}\.local\bin{{else}}{{.HOME}}/.local/bin{{end}}'
 
@@ -54,7 +54,17 @@ tasks:
   test:
     desc: 모든 패키지의 테스트 실행
     cmds:
-      - go test -v ./...
+      - go test -v -count=1 ./...
+
+  test-race:
+    desc: 경쟁 조건 검출기를 포함한 테스트 실행
+    cmds:
+      - go test -race -count=1 ./...
+
+  coverage:
+    desc: 테스트 커버리지 측정
+    cmds:
+      - go test -cover ./...
 
   fmt:
     desc: Go 코드 스타일 정렬

@@ -1,7 +1,15 @@
 package main
 
-import "ppm/cmd"
+import (
+	"fmt"
+	"os"
+
+	"ppm/cmd"
+)
 
 func main() {
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

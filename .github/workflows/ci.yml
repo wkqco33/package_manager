@@ -1,10 +1,13 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   test:
@@ -12,16 +15,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.26'
+          go-version: "1.26"
           cache: true
 
       - name: Set up Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@b91d5d2c96a56797b48ac1e0e89220bf64044611 # v2.0.0
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -36,6 +41,15 @@ jobs:
 
       - name: Run tests
         run: task test
+
+      - name: Run race detector
+        run: task test-race
+
+      - name: Run static analysis
+        run: task lint
+
+      - name: Check test coverage
+        run: task coverage
 
       - name: Build binary
         run: task build

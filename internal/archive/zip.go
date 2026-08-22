@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"ppm/internal/apperr"
 )
@@ -44,18 +43,27 @@ func (a *ZipArchiver) Extract(r io.Reader, destDir string) error {
 	}
 
 	for _, f := range zr.File {
-		target := filepath.Join(destDir, f.Name)
-
-		// ZipSlip 취약점 방지
-		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) && target != destDir {
-			continue
+		target, err := archiveTargetPath(destDir, f.Name)
+		if err != nil {
+			return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive path %q", f.Name)
+		}
+		if f.UncompressedSize64 > uint64(maxExtractedFileSize) {
+			return apperr.New(apperr.CodeArchive, "archive member %q exceeds the maximum extracted file size", f.Name)
 		}
 
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(target, 0755)
+			if err := ensureNoSymlinkPath(destDir, target); err != nil {
+				return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive directory %q", f.Name)
+			}
+			if err := os.MkdirAll(target, 0755); err != nil {
+				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create archive directory")
+			}
 			continue
 		}
 
+		if err := ensureNoSymlinkPath(destDir, target); err != nil {
+			return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive file %q", f.Name)
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create parent dir")
 		}
@@ -71,10 +79,16 @@ func (a *ZipArchiver) Extract(r io.Reader, destDir string) error {
 			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create file")
 		}
 
-		if _, err := io.Copy(outFile, rc); err != nil {
+		n, copyErr := io.Copy(outFile, io.LimitReader(rc, maxExtractedFileSize+1))
+		if copyErr != nil {
 			outFile.Close()
 			rc.Close()
-			return apperr.Wrap(apperr.CodeFileSystem, err, "failed to write file")
+			return apperr.Wrap(apperr.CodeFileSystem, copyErr, "failed to write file")
+		}
+		if n > maxExtractedFileSize {
+			outFile.Close()
+			rc.Close()
+			return apperr.New(apperr.CodeArchive, "archive member %q exceeds the maximum extracted file size", f.Name)
 		}
 
 		outFile.Close()

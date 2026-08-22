@@ -1,6 +1,8 @@
 package pkg
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -179,6 +181,13 @@ func InstallWithPackage(p *Package, fetcher RegistryFetcher, archiver Archiver, 
 		archiveFile = file
 	}
 	defer archiveFile.Close()
+
+	if err := verifyChecksum(archiveFile, p.Checksum); err != nil {
+		if cacheFilePath != "" {
+			_ = os.Remove(cacheFilePath)
+		}
+		return apperr.Wrap(apperr.CodeArchive, err, "archive checksum verification failed")
+	}
 
 	// 최종 파일에 대해 압축 해제 렌더링
 	bar := ui.NewProgressBar(archiveSize, 40, "Extracting")
@@ -405,6 +414,33 @@ func hasPackageMain(dir string) bool {
 	}
 
 	return false
+}
+
+func verifyChecksum(file *os.File, expected string) error {
+	if expected == "" {
+		return nil
+	}
+
+	expected = strings.TrimPrefix(strings.TrimSpace(expected), "sha256:")
+	if len(expected) != sha256.Size*2 {
+		return fmt.Errorf("invalid SHA-256 checksum length")
+	}
+	if _, err := hex.DecodeString(expected); err != nil {
+		return fmt.Errorf("invalid SHA-256 checksum: %w", err)
+	}
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return fmt.Errorf("failed to hash archive: %w", err)
+	}
+	actual := hex.EncodeToString(hash.Sum(nil))
+	if !strings.EqualFold(actual, expected) {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", expected, actual)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to rewind archive: %w", err)
+	}
+	return nil
 }
 
 // ListInstalled는 packages 디렉터리를 스캔해 설치 목록을 반환합니다.

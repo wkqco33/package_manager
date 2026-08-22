@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"runtime/debug"
 
-	"github.com/spf13/cobra"
+	"github.com/wkqco33/wcli"
 )
 
 // Version은 ppm의 현재 버전입니다.
@@ -28,12 +28,13 @@ func resolveVersion() string {
 	return Version
 }
 
-var versionCmd = &cobra.Command{
+var versionCmd = &wcli.Command{
 	Use:   "version",
 	Short: "ppm의 버전 번호 출력",
 	Long:  `ppm의 버전 번호를 출력합니다.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(ctx *wcli.Context) error {
 		fmt.Printf("ppm version %s %s/%s\n", resolveVersion(), runtime.GOOS, runtime.GOARCH)
+		return nil
 	},
 }
 

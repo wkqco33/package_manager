@@ -263,8 +263,6 @@ type sourceArchiveFetcher struct {
 	body []byte
 }
 
-type sourceBuildArchiver struct{}
-
 func (f *sourceArchiveFetcher) GetMetadata(name string) (*Package, error) {
 	return f.pkg, nil
 }
@@ -272,6 +270,8 @@ func (f *sourceArchiveFetcher) GetMetadata(name string) (*Package, error) {
 func (f *sourceArchiveFetcher) DownloadSource(p *Package) (io.ReadCloser, int64, error) {
 	return io.NopCloser(bytes.NewReader(f.body)), int64(len(f.body)), nil
 }
+
+type sourceBuildArchiver struct{}
 
 func (a *sourceBuildArchiver) Extract(r io.Reader, dest string) error {
 	if err := os.MkdirAll(dest, 0755); err != nil {
