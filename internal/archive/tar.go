@@ -97,18 +97,23 @@ func (a *TarArchiver) Extract(r io.Reader, destDir string) error {
 			}
 			outFile.Close()
 		case tar.TypeSymlink:
-			// 링크 자체와 링크가 가리키는 경로 모두 추출 디렉터리 안에 있어야 합니다.
-			if runtime.GOOS != "windows" {
-				if err := ensureNoSymlinkPath(destDir, target); err != nil {
-					return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive symlink %q", header.Name)
-				}
-				linkTarget := filepath.Join(filepath.Dir(target), header.Linkname)
-				if err := ensureWithinRoot(destDir, linkTarget); err != nil {
-					return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive symlink target %q", header.Linkname)
-				}
-				if err := os.Symlink(header.Linkname, target); err != nil {
-					return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create symlink %s", header.Name)
-				}
+			// 링크를 만들 수 없는 Windows에서도 먼저 검증하여 위험한 아카이브를
+			// 조용히 허용하지 않습니다.
+			if err := ensureNoSymlinkPath(destDir, target); err != nil {
+				return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive symlink %q", header.Name)
+			}
+			if filepath.IsAbs(header.Linkname) {
+				return apperr.New(apperr.CodeArchive, "absolute archive symlink target %q is not allowed", header.Linkname)
+			}
+			linkTarget := filepath.Join(filepath.Dir(target), header.Linkname)
+			if err := ensureWithinRoot(destDir, linkTarget); err != nil {
+				return apperr.Wrap(apperr.CodeArchive, err, "unsafe archive symlink target %q", header.Linkname)
+			}
+			if runtime.GOOS == "windows" {
+				return apperr.New(apperr.CodeArchive, "symbolic links are not supported in archives on Windows")
+			}
+			if err := os.Symlink(header.Linkname, target); err != nil {
+				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to create symlink %s", header.Name)
 			}
 		}
 	}

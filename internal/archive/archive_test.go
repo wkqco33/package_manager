@@ -6,7 +6,6 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -71,9 +70,8 @@ func TestTarArchiver_RejectsUnsafePaths(t *testing.T) {
 	outside := filepath.Join(tmpDir, "escape.txt")
 
 	tests := []struct {
-		name        string
-		header      tar.Header
-		skipWindows bool
+		name   string
+		header tar.Header
 	}{
 		{
 			name:   "parent traversal",
@@ -84,17 +82,13 @@ func TestTarArchiver_RejectsUnsafePaths(t *testing.T) {
 			header: tar.Header{Name: "nested/../../escape.txt", Mode: 0644, Size: 4},
 		},
 		{
-			name:        "external symlink",
-			header:      tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "../../escape.txt"},
-			skipWindows: true,
+			name:   "external symlink",
+			header: tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "../../escape.txt"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.skipWindows && runtime.GOOS == "windows" {
-				t.Skip("Windows does not create archive symlinks")
-			}
 			destDir := t.TempDir()
 			archiveData := createTarGZ(t, []tar.Header{tt.header}, []string{"evil"})
 			err := (&TarArchiver{}).Extract(bytes.NewReader(archiveData), destDir)
