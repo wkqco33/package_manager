@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"ppm/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/pkg"
 )
 
 type updateFetcher struct {

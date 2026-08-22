@@ -11,8 +11,8 @@ import (
 	"runtime"
 	"strings"
 
-	"ppm/internal/apperr"
-	"ppm/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/pkg"
 )
 
 // TarArchiver는 .tar.gz용 pkg.Archiver 구현체입니다.

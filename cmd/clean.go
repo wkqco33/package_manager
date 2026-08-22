@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"ppm/internal/app"
-	"ppm/internal/apperr"
-	"ppm/internal/config"
-	"ppm/internal/logger"
+	"github.com/wkqco33/package_manager/internal/app"
+	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/config"
+	"github.com/wkqco33/package_manager/internal/logger"
 
 	"github.com/wkqco33/wcli"
 )

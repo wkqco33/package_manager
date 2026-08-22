@@ -1,4 +1,4 @@
-module ppm
+module github.com/wkqco33/package_manager
 
 go 1.26.1
 

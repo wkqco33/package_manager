@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"ppm/internal/apperr"
-	"ppm/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/pkg"
 )
 
 // GitHubRegistry는 GitHub용 pkg.RegistryFetcher 구현체입니다.

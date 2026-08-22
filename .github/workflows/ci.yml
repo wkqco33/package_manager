@@ -53,3 +53,28 @@ jobs:
 
       - name: Build binary
         run: task build
+
+  smoke:
+    name: Native smoke test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Run native tests
+        run: go test ./...
+
+      - name: Build native binary
+        run: go build -trimpath -o ppm${{ matrix.os == 'windows-latest' && '.exe' || '' }} .

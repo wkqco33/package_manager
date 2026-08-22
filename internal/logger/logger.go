@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"os"
 
-	"ppm/internal/ui"
+	"github.com/wkqco33/package_manager/internal/ui"
 )
 
 var (

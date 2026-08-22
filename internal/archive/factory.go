@@ -3,7 +3,7 @@ package archive
 import (
 	"strings"
 
-	"ppm/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/pkg"
 )
 
 // NewArchiver는 소스 파일명에 맞는 아카이버를 반환합니다.

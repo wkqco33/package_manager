@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"ppm/internal/archive"
-	"ppm/internal/config"
-	"ppm/internal/pkg"
-	"ppm/internal/platform"
+	"github.com/wkqco33/package_manager/internal/archive"
+	"github.com/wkqco33/package_manager/internal/config"
+	"github.com/wkqco33/package_manager/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/platform"
 )
 
 func TestInstallWithPackageUsesRealTarArchiver(t *testing.T) {

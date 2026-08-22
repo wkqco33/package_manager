@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"ppm/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/apperr"
 )
 
 // installExecutable은 src의 실행 파일을 dst 경로로 복사합니다.

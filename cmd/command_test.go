@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"ppm/internal/config"
-	"ppm/internal/pkg"
-	"ppm/internal/platform"
+	"github.com/wkqco33/package_manager/internal/config"
+	"github.com/wkqco33/package_manager/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/platform"
 )
 
 func TestInstallCommandRejectsMissingPackage(t *testing.T) {
@@ -87,6 +87,55 @@ func TestInitCommandInjectsConfigGeneration(t *testing.T) {
 	})
 	if err := command.Execute(nil); !errors.Is(err, wantErr) {
 		t.Fatalf("error = %v, want injected generation error", err)
+	}
+}
+
+func TestConfigSetCommandUpdatesAndSavesValue(t *testing.T) {
+	cfg := &config.Config{RegistryURL: "old", InstallPath: "/bin"}
+	var saved *config.Config
+	command := newConfigCommand(configDependencies{
+		LoadConfig: func() (*config.Config, error) { return cfg, nil },
+		SaveConfig: func(value *config.Config) error {
+			saved = value
+			return nil
+		},
+		SetValue: config.SetValue,
+	})
+	if err := command.Execute([]string{"set", "registry_url", "https://registry.example.com"}); err != nil {
+		t.Fatalf("config set error = %v", err)
+	}
+	if saved == nil || saved.RegistryURL != "https://registry.example.com" {
+		t.Fatalf("saved config = %#v, want updated registry URL", saved)
+	}
+	if saved.InstallPath != "/bin" {
+		t.Errorf("InstallPath = %q, want existing value preserved", saved.InstallPath)
+	}
+}
+
+func TestConfigSetCreatesDefaultWhenConfigIsMissing(t *testing.T) {
+	want := &config.Config{RegistryURL: "default", InstallPath: "/bin"}
+	var saved *config.Config
+	command := newConfigCommand(configDependencies{
+		LoadConfig:    func() (*config.Config, error) { return nil, config.ErrConfigNotFound },
+		DefaultConfig: func() (*config.Config, error) { return want, nil },
+		SaveConfig: func(value *config.Config) error {
+			saved = value
+			return nil
+		},
+		SetValue: config.SetValue,
+	})
+	if err := command.Execute([]string{"set", "auth_token", "new-token"}); err != nil {
+		t.Fatalf("config set error = %v", err)
+	}
+	if saved == nil || saved.AuthToken != "new-token" {
+		t.Fatalf("saved config = %#v, want token in default config", saved)
+	}
+}
+
+func TestConfigSetRequiresKeyAndValue(t *testing.T) {
+	command := newConfigCommand(configDependencies{})
+	if err := command.Execute([]string{"set", "auth_token"}); err == nil {
+		t.Fatal("expected config set to reject missing value")
 	}
 }
 

@@ -5,10 +5,10 @@ import (
 
 	"github.com/wkqco33/wcli"
 
-	"ppm/internal/app"
-	"ppm/internal/config"
-	"ppm/internal/logger"
-	"ppm/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/app"
+	"github.com/wkqco33/package_manager/internal/config"
+	"github.com/wkqco33/package_manager/internal/logger"
+	"github.com/wkqco33/package_manager/internal/pkg"
 )
 
 type uninstallDependencies struct {

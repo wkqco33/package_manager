@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"ppm/internal/apperr"
-	"ppm/internal/platform"
+	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/platform"
 
 	"gopkg.in/yaml.v3"
 )
@@ -18,6 +18,60 @@ type Config struct {
 }
 
 var ErrConfigNotFound = apperr.New(apperr.CodeConfig, "configuration file not found")
+
+// DefaultConfig는 플랫폼 기본 경로를 사용하는 기본 설정을 반환합니다.
+func DefaultConfig() (*Config, error) {
+	paths, err := platform.GetPaths()
+	if err != nil {
+		return nil, apperr.Wrap(apperr.CodeFileSystem, err, "could not get platform paths")
+	}
+	return &Config{
+		RegistryURL: "https://api.github.com",
+		InstallPath: paths.BinDir,
+	}, nil
+}
+
+// SaveConfig는 설정 디렉터리를 만들고 config.yaml을 안전한 권한으로 저장합니다.
+func SaveConfig(cfg *Config) error {
+	if cfg == nil {
+		return apperr.New(apperr.CodeConfig, "configuration must not be nil")
+	}
+	configDir, err := EnsureConfigDir()
+	if err != nil {
+		return err
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return apperr.Wrap(apperr.CodeConfig, err, "failed to format config structure")
+	}
+	configPath := filepath.Join(configDir, "config.yaml")
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		return apperr.Wrap(apperr.CodeFileSystem, err, "failed to write config file securely")
+	}
+	if err := os.Chmod(configPath, 0600); err != nil {
+		return apperr.Wrap(apperr.CodeFileSystem, err, "failed to secure config file")
+	}
+	return nil
+}
+
+// SetValue는 설정 키 하나의 값을 변경합니다.
+func SetValue(cfg *Config, key, value string) error {
+	if cfg == nil {
+		return apperr.New(apperr.CodeConfig, "configuration must not be nil")
+	}
+	switch key {
+	case "registry_url":
+		cfg.RegistryURL = value
+	case "auth_token":
+		cfg.AuthToken = value
+	case "install_path":
+		cfg.InstallPath = value
+	default:
+		return apperr.New(apperr.CodeInvalidInput, "unsupported configuration key: %s", key)
+	}
+	return nil
+}
 
 // LoadConfig는 config.yaml을 읽습니다.
 func LoadConfig() (*Config, error) {
@@ -72,28 +126,15 @@ func GenerateDefaultConfig() error {
 	// 이미 존재하면 생성하지 않음
 	if _, err := os.Stat(configPath); err == nil {
 		return apperr.New(apperr.CodeConfig, "config.yaml already exists")
+	} else if !os.IsNotExist(err) {
+		return apperr.Wrap(apperr.CodeFileSystem, err, "failed to inspect config file")
 	}
 
-	paths, err := platform.GetPaths()
+	cfg, err := DefaultConfig()
 	if err != nil {
 		return err
 	}
-
-	cfg := Config{
-		RegistryURL: "https://api.github.com",
-		AuthToken:   "", // 사용자가 직접 입력
-		InstallPath: paths.BinDir,
-	}
-
-	data, err := yaml.Marshal(&cfg)
-	if err != nil {
-		return apperr.Wrap(apperr.CodeConfig, err, "failed to format config structure")
-	}
-
-	if err := os.WriteFile(configPath, data, 0600); err != nil {
-		return apperr.Wrap(apperr.CodeFileSystem, err, "failed to write config file securely")
-	}
-	return nil
+	return SaveConfig(cfg)
 }
 
 // GetPackagesDir는 패키지 압축 해제 디렉터리 경로를 반환합니다.

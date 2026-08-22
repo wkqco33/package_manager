@@ -12,11 +12,28 @@
 - **다중 패키지 병렬 설치**: 여러 개의 패키지를 동시에 설치하여 작업 시간을 단축합니다.
 - **최소한의 추상화**: 성능과 직관성을 최우선으로 고려하여 Go로 구현되었습니다.
 
-## 설치 및 빌드
+## 설치
 
-[Task](https://taskfile.dev)(go-task)를 사용하여 모든 OS(Windows/macOS/Linux)에서 편리하게 빌드 및 설치할 수 있습니다.
+### GitHub Release에서 설치 (권장)
 
-먼저 Task를 설치합니다. (자세한 방법: https://taskfile.dev/installation)
+[Releases](https://github.com/wkqco33/package_manager/releases)에서 운영체제와 CPU 아키텍처에 맞는 아카이브를 다운로드하세요.
+
+```bash
+# Linux amd64 예시
+curl -LO https://github.com/wkqco33/package_manager/releases/latest/download/ppm_linux_amd64.tar.gz
+curl -LO https://github.com/wkqco33/package_manager/releases/latest/download/ppm_linux_amd64.tar.gz.sha256
+sha256sum -c ppm_linux_amd64.tar.gz.sha256
+tar -xzf ppm_linux_amd64.tar.gz
+install -Dm755 ppm ~/.local/bin/ppm
+```
+
+Windows와 macOS 사용자는 Releases 페이지에서 해당 플랫폼의 파일을 선택하고, 함께 제공되는 `.sha256` 파일로 다운로드 무결성을 확인하세요.
+
+### 소스에서 빌드
+
+[Task](https://taskfile.dev)(go-task)를 사용하여 모든 OS(Windows/macOS/Linux)에서 빌드할 수 있습니다.
+
+먼저 Task를 설치합니다. (자세한 방법: <https://taskfile.dev/installation>)
 
 ```bash
 go install github.com/go-task/task/v3/cmd/task@latest
@@ -60,7 +77,15 @@ ppm init
 
 ### 2. 패키지 설치
 
-프라이빗 레포지토리에서 현재 시스템에 맞는 바이너리를 설치합니다. GitHub Release가 없으면 최신 태그로, 바이너리 Asset이 없으면 소스 아카이브로 자동 폴백합니다.
+프라이빗 레포지토리에서 현재 시스템에 맞는 바이너리를 설치합니다. GitHub Release가 없으면 최신 태그로 조회하며, 기본적으로는 사전 빌드된 바이너리 asset만 설치합니다.
+
+소스 아카이브를 로컬에서 빌드해야 하는 신뢰할 수 있는 저장소는 명시적으로 다음 옵션을 사용하세요.
+
+```bash
+ppm install --from-source owner/repo
+```
+
+`--from-source`는 다운로드한 소스에서 로컬 `go build`를 실행하므로 신뢰할 수 있는 저장소에만 사용해야 합니다.
 
 ```bash
 ppm install owner/repo1 owner/repo2
@@ -94,6 +119,36 @@ ppm uninstall owner/repo1 repo2
 
 ## 설정 상세 (`config.yaml`)
 
+설정 파일은 `ppm init`으로 생성할 수 있으며, 커맨드로 조회하거나 변경할 수도 있습니다.
+
+```bash
+# 현재 설정 확인 (auth_token은 보안을 위해 마스킹되어 출력됩니다)
+ppm config show
+
+# 설정 변경
+ppm config set registry_url https://api.github.com
+ppm config set auth_token <your-personal-access-token>
+ppm config set install_path ~/.local/bin
+```
+
+`ppm config set`은 설정 파일이 아직 없으면 기본 설정을 생성한 뒤 지정한 값을 저장합니다.
+
 - `registry_url`: 레지스트리 API URL (기본값: `https://api.github.com`). 커스텀 레지스트리에서 패키지를 찾지 못하면 GitHub 공개 API로 한 번 더 조회합니다.
 - `auth_token`: GitHub Personal Access Token (PAT)
 - `install_path`: 바이너리가 설치될 경로 (기본값: `~/.local/bin` 또는 Windows 사용자 홈 `.local\bin`)
+
+설정 파일에는 GitHub Personal Access Token이 저장되므로 파일 권한을 다른 사용자에게 공개하지 마세요. `ppm config show`는 토큰을 마스킹해서 출력합니다.
+
+## 개발
+
+```bash
+task test       # 전체 테스트
+task test-race  # race detector 포함 테스트
+task lint       # go vet
+task coverage   # 패키지별 커버리지
+task build      # 로컬 빌드
+```
+
+## 라이선스
+
+이 프로젝트는 [MIT License](LICENSE)로 배포됩니다.

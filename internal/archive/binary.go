@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"ppm/internal/apperr"
-	"ppm/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/pkg"
 )
 
 // BinaryArchiver는 압축되지 않은 단일 바이너리용 pkg.Archiver 구현체입니다.

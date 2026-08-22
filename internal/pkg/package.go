@@ -12,11 +12,11 @@ import (
 	"sort"
 	"strings"
 
-	"ppm/internal/apperr"
-	"ppm/internal/config"
-	"ppm/internal/logger"
-	"ppm/internal/platform"
-	"ppm/internal/ui"
+	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/config"
+	"github.com/wkqco33/package_manager/internal/logger"
+	"github.com/wkqco33/package_manager/internal/platform"
+	"github.com/wkqco33/package_manager/internal/ui"
 )
 
 // Package는 패키지 메타데이터를 나타냅니다.
@@ -74,8 +74,21 @@ func Install(pkgName string, fetcher RegistryFetcher, archiver Archiver, install
 	return InstallWithPackage(p, fetcher, archiver, installPath)
 }
 
-// InstallWithPackage는 이미 조회한 메타데이터로 설치를 수행합니다.
+// InstallOptions controls potentially unsafe installation fallbacks.
+type InstallOptions struct {
+	// AllowSourceBuild permits building an untrusted source archive locally when
+	// it does not contain a suitable pre-built executable.
+	AllowSourceBuild bool
+}
+
+// InstallWithPackage preserves the library's historical behavior and allows
+// source builds. CLI callers should use InstallWithPackageOptions explicitly.
 func InstallWithPackage(p *Package, fetcher RegistryFetcher, archiver Archiver, installPath string) error {
+	return InstallWithPackageOptions(p, fetcher, archiver, installPath, InstallOptions{AllowSourceBuild: true})
+}
+
+// InstallWithPackageOptions는 이미 조회한 메타데이터로 설치를 수행합니다.
+func InstallWithPackageOptions(p *Package, fetcher RegistryFetcher, archiver Archiver, installPath string, options InstallOptions) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
@@ -209,7 +222,7 @@ func InstallWithPackage(p *Package, fetcher RegistryFetcher, archiver Archiver, 
 	logger.Debug("Linking binary", "src", extractDir, "link", targetLink)
 
 	// 기본값: 아카이브 내부 바이너리 이름은 저장소명(safeName)과 동일하다고 가정
-	if err := linkInstalledBinary(archiver, extractDir, binName, targetLink); err != nil {
+	if err := linkInstalledBinary(archiver, extractDir, binName, targetLink, options.AllowSourceBuild); err != nil {
 		return apperr.Wrap(apperr.CodeFileSystem, err, "linking error")
 	}
 
@@ -303,9 +316,11 @@ func saveMetadata(dir string, p *Package) error {
 	return os.WriteFile(filepath.Join(dir, "ppm-meta.json"), data, 0644)
 }
 
-func linkInstalledBinary(archiver Archiver, extractDir, binName, targetLink string) error {
+func linkInstalledBinary(archiver Archiver, extractDir, binName, targetLink string, allowSourceBuild bool) error {
 	if err := archiver.Link(extractDir, binName, targetLink); err == nil {
 		return nil
+	} else if !allowSourceBuild {
+		return apperr.New(apperr.CodeArchive, "packaged executable %s not found; source builds are disabled (use --from-source only for trusted repositories)", binName)
 	} else {
 		attempted, buildErr := buildGoSourceFallback(extractDir, binName)
 		if !attempted {

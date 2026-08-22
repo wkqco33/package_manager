@@ -5,12 +5,12 @@ import (
 
 	"github.com/wkqco33/wcli"
 
-	"ppm/internal/app"
-	"ppm/internal/archive"
-	"ppm/internal/config"
-	"ppm/internal/logger"
-	"ppm/internal/pkg"
-	"ppm/internal/registry"
+	"github.com/wkqco33/package_manager/internal/app"
+	"github.com/wkqco33/package_manager/internal/archive"
+	"github.com/wkqco33/package_manager/internal/config"
+	"github.com/wkqco33/package_manager/internal/logger"
+	"github.com/wkqco33/package_manager/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/registry"
 )
 
 type updateDependencies struct {

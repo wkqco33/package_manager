@@ -5,11 +5,11 @@ import (
 
 	"github.com/wkqco33/wcli"
 
-	"ppm/internal/config"
-	"ppm/internal/logger"
-	"ppm/internal/pkg"
-	"ppm/internal/registry"
-	"ppm/internal/ui"
+	"github.com/wkqco33/package_manager/internal/config"
+	"github.com/wkqco33/package_manager/internal/logger"
+	"github.com/wkqco33/package_manager/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/registry"
+	"github.com/wkqco33/package_manager/internal/ui"
 )
 
 type infoDependencies struct {

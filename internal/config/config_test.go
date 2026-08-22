@@ -1,9 +1,9 @@
 package config
 
 import (
+	"github.com/wkqco33/package_manager/internal/platform"
 	"os"
 	"path/filepath"
-	"ppm/internal/platform"
 	"testing"
 )
 
@@ -17,6 +17,63 @@ func setupTempHome(t *testing.T) string {
 	t.Setenv("USERPROFILE", home) // Windows (os.UserHomeDir)
 	t.Setenv("APPDATA", "")       // GetPaths가 home/AppData/Roaming 으로 파생
 	return home
+}
+
+func TestSetValueAndSaveConfig(t *testing.T) {
+	setupTempHome(t)
+
+	cfg, err := DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() error = %v", err)
+	}
+	if err := SetValue(cfg, "auth_token", "secret-token"); err != nil {
+		t.Fatalf("SetValue() error = %v", err)
+	}
+	if err := SetValue(cfg, "registry_url", "https://registry.example.com"); err != nil {
+		t.Fatalf("SetValue() error = %v", err)
+	}
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if loaded.RegistryURL != "https://registry.example.com" {
+		t.Errorf("RegistryURL = %q, want updated URL", loaded.RegistryURL)
+	}
+	if loaded.AuthToken != "secret-token" {
+		t.Errorf("AuthToken = %q, want updated token", loaded.AuthToken)
+	}
+	if loaded.InstallPath != cfg.InstallPath {
+		t.Errorf("InstallPath = %q, want %q", loaded.InstallPath, cfg.InstallPath)
+	}
+}
+
+func TestSetValueRejectsUnknownKey(t *testing.T) {
+	if err := SetValue(&Config{}, "unknown", "value"); err == nil {
+		t.Fatal("SetValue() error = nil, want unsupported key error")
+	}
+}
+
+func TestSaveConfigUsesSecurePermissions(t *testing.T) {
+	setupTempHome(t)
+	if err := SaveConfig(&Config{RegistryURL: "https://api.github.com"}); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	paths, err := platform.GetPaths()
+	if err != nil {
+		t.Fatalf("GetPaths() error = %v", err)
+	}
+	info, err := os.Stat(filepath.Join(paths.ConfigDir, "config.yaml"))
+	if err != nil {
+		t.Fatalf("Stat(config.yaml) error = %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("config permissions = %o, want 600", got)
+	}
 }
 
 func TestGenerateAndLoadConfig(t *testing.T) {

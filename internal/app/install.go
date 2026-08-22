@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"ppm/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/pkg"
 )
 
 // ArchiverFactory creates the archive implementation appropriate for a source.
@@ -16,9 +16,10 @@ type ArchiverFactory func(source, binName string) pkg.Archiver
 // PackageInstaller coordinates installation of already-resolved packages.
 // Metadata resolution remains separate so both stages can be tested independently.
 type PackageInstaller struct {
-	Fetcher     pkg.RegistryFetcher
-	InstallPath string
-	NewArchiver ArchiverFactory
+	Fetcher          pkg.RegistryFetcher
+	InstallPath      string
+	NewArchiver      ArchiverFactory
+	AllowSourceBuild bool
 }
 
 // Install installs packages in the supplied order and reports all failures.
@@ -48,7 +49,7 @@ func (s PackageInstaller) Install(packages []*pkg.Package) error {
 			failures = append(failures, fmt.Errorf("%s: archiver factory returned nil", p.Name))
 			continue
 		}
-		if err := pkg.InstallWithPackage(p, s.Fetcher, archiver, s.InstallPath); err != nil {
+		if err := pkg.InstallWithPackageOptions(p, s.Fetcher, archiver, s.InstallPath, pkg.InstallOptions{AllowSourceBuild: s.AllowSourceBuild}); err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", p.Name, err))
 		}
 	}

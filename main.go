@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"ppm/cmd"
+	"github.com/wkqco33/package_manager/cmd"
 )
 
 func main() {

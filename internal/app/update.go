@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"ppm/internal/pkg"
+	"github.com/wkqco33/package_manager/internal/pkg"
 )
 
 // UpdateResult describes the work performed by PackageUpdater.

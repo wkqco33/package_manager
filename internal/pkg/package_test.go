@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"ppm/internal/apperr"
-	"ppm/internal/config"
-	"ppm/internal/platform"
+	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/config"
+	"github.com/wkqco33/package_manager/internal/platform"
 )
 
 // setupTempHome은 모든 OS에서 ppm 표준 경로가 임시 디렉터리를 가리키도록 환경변수를 설정합니다.

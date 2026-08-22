@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"ppm/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/apperr"
 )
 
 // ZipArchiver는 .zip용 pkg.Archiver 구현체입니다.

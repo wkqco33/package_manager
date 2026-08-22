@@ -7,8 +7,8 @@ import (
 
 	"github.com/wkqco33/wcli"
 
-	"ppm/internal/apperr"
-	"ppm/internal/logger"
+	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/logger"
 )
 
 var rootCmd = &wcli.Command{
