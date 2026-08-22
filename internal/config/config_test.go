@@ -1,10 +1,12 @@
 package config
 
 import (
-	"github.com/wkqco33/package_manager/internal/platform"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+
+	"github.com/wkqco33/package_manager/internal/platform"
 )
 
 // setupTempHome은 모든 OS에서 ppm 표준 경로가 임시 디렉터리를 가리키도록 환경변수를 설정합니다.
@@ -58,6 +60,9 @@ func TestSetValueRejectsUnknownKey(t *testing.T) {
 }
 
 func TestSaveConfigUsesSecurePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix permission bits")
+	}
 	setupTempHome(t)
 	if err := SaveConfig(&Config{RegistryURL: "https://api.github.com"}); err != nil {
 		t.Fatalf("SaveConfig() error = %v", err)

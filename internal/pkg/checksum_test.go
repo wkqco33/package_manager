@@ -13,6 +13,7 @@ func TestVerifyChecksum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer file.Close()
 	if _, err := file.WriteString("archive contents"); err != nil {
 		t.Fatal(err)
 	}
@@ -36,6 +37,7 @@ func TestVerifyChecksumRejectsMismatchAndMalformedValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer file.Close()
 	if _, err := file.WriteString("archive contents"); err != nil {
 		t.Fatal(err)
 	}
