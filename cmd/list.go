@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -30,6 +31,13 @@ func defaultListDependencies() listDependencies {
 // listCmd는 list 명령입니다.
 var listCmd = newListCommand(defaultListDependencies())
 
+var listJSON bool
+
+type installedPackageJSON struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
 func newListCommand(deps listDependencies) *wcli.Command {
 	return &wcli.Command{
 		Use:   "list",
@@ -43,6 +51,14 @@ func newListCommand(deps listDependencies) *wcli.Command {
 			installed, err := deps.ListInstalled(packagesDir)
 			if err != nil {
 				return apperr.Wrap(apperr.CodeFileSystem, err, "failed to read packages directory")
+			}
+
+			if listJSON {
+				result := make([]installedPackageJSON, 0, len(installed))
+				for _, p := range installed {
+					result = append(result, installedPackageJSON{Name: p.Name, Version: p.Version})
+				}
+				return json.NewEncoder(os.Stdout).Encode(result)
 			}
 
 			count := 0
@@ -76,4 +92,5 @@ func newListCommand(deps listDependencies) *wcli.Command {
 
 func init() {
 	rootCmd.AddCommand(listCmd)
+	listCmd.Flags().BoolVar(&listJSON, "json", "", false, "JSON 형식으로 출력")
 }

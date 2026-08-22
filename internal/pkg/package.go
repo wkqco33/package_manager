@@ -21,17 +21,19 @@ import (
 
 // Package는 패키지 메타데이터를 나타냅니다.
 type Package struct {
-	Name         string   `json:"name"`
-	Version      string   `json:"version"`
-	Source       string   `json:"source"`
-	RegistryURL  string   `json:"registry_url,omitempty"`
-	AssetID      int64    `json:"asset_id"` // 프라이빗 에셋 다운로드용 ID
-	Checksum     string   `json:"checksum"`
-	Description  string   `json:"description"`
-	Author       string   `json:"author"`
-	Homepage     string   `json:"homepage"`
-	BinName      string   `json:"bin_name"` // 실제 바이너리 이름 (레포지토리 이름과 다를 경우)
-	Dependencies []string `json:"dependencies,omitempty"`
+	Name                  string            `json:"name"`
+	Version               string            `json:"version"`
+	Source                string            `json:"source"`
+	RegistryURL           string            `json:"registry_url,omitempty"`
+	AssetID               int64             `json:"asset_id"` // 프라이빗 에셋 다운로드용 ID
+	Checksum              string            `json:"checksum"`
+	Description           string            `json:"description"`
+	ReleaseNotes          string            `json:"release_notes,omitempty"`
+	Author                string            `json:"author"`
+	Homepage              string            `json:"homepage"`
+	BinName               string            `json:"bin_name"` // 실제 바이너리 이름 (레포지토리 이름과 다를 경우)
+	Dependencies          []string          `json:"dependencies,omitempty"`
+	DependencyConstraints map[string]string `json:"dependency_constraints,omitempty"`
 }
 
 // Validate는 패키지 구조체의 필수 필드들의 유효성을 검증합니다.
@@ -79,6 +81,8 @@ type InstallOptions struct {
 	// AllowSourceBuild permits building an untrusted source archive locally when
 	// it does not contain a suitable pre-built executable.
 	AllowSourceBuild bool
+	// Offline prevents network access when the archive is not already cached.
+	Offline bool
 }
 
 // InstallWithPackage preserves the library's historical behavior and allows
@@ -154,6 +158,9 @@ func InstallWithPackageOptions(p *Package, fetcher RegistryFetcher, archiver Arc
 		archiveFile = file
 		archiveSize = info.Size()
 	} else {
+		if options.Offline {
+			return apperr.New(apperr.CodeNetwork, "offline mode: %s %s가 캐시에 없습니다", p.Name, p.Version)
+		}
 		logger.Info("Downloading %s version %s...", p.Name, p.Version)
 		body, size, err := fetcher.DownloadSource(p)
 		if err != nil {

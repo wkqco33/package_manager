@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/wkqco33/wcli"
 
@@ -21,13 +23,15 @@ func defaultInfoDependencies() infoDependencies {
 	return infoDependencies{
 		LoadConfig: config.LoadConfig,
 		NewFetcher: func(cfg *config.Config) pkg.MetadataFetcher {
-			return &registry.GitHubRegistry{Token: cfg.AuthToken, URL: cfg.RegistryURL}
+			return registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries)
 		},
 	}
 }
 
 // infoCmd는 info 명령입니다.
 var infoCmd = newInfoCommand(defaultInfoDependencies())
+
+var infoJSON bool
 
 func newInfoCommand(deps infoDependencies) *wcli.Command {
 	return &wcli.Command{
@@ -53,6 +57,9 @@ func newInfoCommand(deps infoDependencies) *wcli.Command {
 			spinner.Stop()
 			if err != nil {
 				return err
+			}
+			if infoJSON {
+				return json.NewEncoder(os.Stdout).Encode(p)
 			}
 
 			fmt.Println()
@@ -81,4 +88,5 @@ func newInfoCommand(deps infoDependencies) *wcli.Command {
 
 func init() {
 	rootCmd.AddCommand(infoCmd)
+	infoCmd.Flags().BoolVar(&infoJSON, "json", "", false, "JSON 형식으로 출력")
 }

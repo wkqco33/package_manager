@@ -12,9 +12,10 @@ import (
 
 // Config는 애플리케이션 설정입니다.
 type Config struct {
-	RegistryURL string `yaml:"registry_url"`
-	AuthToken   string `yaml:"auth_token"`
-	InstallPath string `yaml:"install_path"`
+	RegistryURL string   `yaml:"registry_url"`
+	Registries  []string `yaml:"registries,omitempty"`
+	AuthToken   string   `yaml:"auth_token"`
+	InstallPath string   `yaml:"install_path"`
 }
 
 var ErrConfigNotFound = apperr.New(apperr.CodeConfig, "configuration file not found")
@@ -92,6 +93,17 @@ func LoadConfig() (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, apperr.Wrap(apperr.CodeConfig, err, "failed to parse config.yaml")
+	}
+
+	// 환경 변수는 CI/CD에서 안전하게 주입할 수 있도록 설정 파일보다 우선합니다.
+	if token := os.Getenv("PPM_AUTH_TOKEN"); token != "" {
+		cfg.AuthToken = token
+	}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" && cfg.AuthToken == "" {
+		cfg.AuthToken = token
+	}
+	if registryURL := os.Getenv("PPM_REGISTRY_URL"); registryURL != "" {
+		cfg.RegistryURL = registryURL
 	}
 
 	// InstallPath가 비어 있으면 기본값 설정

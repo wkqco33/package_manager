@@ -11,6 +11,7 @@ import (
 	"github.com/wkqco33/package_manager/internal/logger"
 	"github.com/wkqco33/package_manager/internal/pkg"
 	"github.com/wkqco33/package_manager/internal/registry"
+	"github.com/wkqco33/package_manager/internal/version"
 )
 
 type updateDependencies struct {
@@ -27,7 +28,7 @@ func defaultUpdateDependencies() updateDependencies {
 		GetPackagesDir: config.GetPackagesDir,
 		ListInstalled:  pkg.ListInstalled,
 		NewFetcher: func(cfg *config.Config) pkg.RegistryFetcher {
-			return &registry.GitHubRegistry{Token: cfg.AuthToken, URL: cfg.RegistryURL}
+			return registry.NewGitHubRegistry(cfg.AuthToken, cfg.RegistryURL, cfg.Registries)
 		},
 		NewArchiver: archive.NewArchiver,
 	}
@@ -35,6 +36,8 @@ func defaultUpdateDependencies() updateDependencies {
 
 // updateCmd는 update 명령입니다.
 var updateCmd = newUpdateCommand(defaultUpdateDependencies())
+
+var updateCheck bool
 
 func newUpdateCommand(deps updateDependencies) *wcli.Command {
 	return &wcli.Command{
@@ -57,6 +60,18 @@ func newUpdateCommand(deps updateDependencies) *wcli.Command {
 			fetcher := deps.NewFetcher(cfg)
 			if fetcher == nil {
 				return fmt.Errorf("update command requires a registry fetcher")
+			}
+			if updateCheck {
+				for _, installedPackage := range installed {
+					latest, fetchErr := fetcher.GetMetadata(installedPackage.Name)
+					if fetchErr != nil {
+						return fetchErr
+					}
+					if version.Compare(installedPackage.Version, latest.Version) < 0 {
+						logger.Info("%s: %s -> %s", installedPackage.Name, installedPackage.Version, latest.Version)
+					}
+				}
+				return nil
 			}
 			updater := app.PackageUpdater{
 				Fetcher:     fetcher,
@@ -83,4 +98,5 @@ func newUpdateCommand(deps updateDependencies) *wcli.Command {
 
 func init() {
 	rootCmd.AddCommand(updateCmd)
+	updateCmd.Flags().BoolVar(&updateCheck, "check", "", false, "업데이트하지 않고 최신 버전만 확인")
 }

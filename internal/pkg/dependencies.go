@@ -1,6 +1,9 @@
 package pkg
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/wkqco33/package_manager/internal/version"
+)
 
 // MetadataFetcher는 패키지 메타데이터 조회에 필요한 최소 의존성입니다.
 // 다운로드까지 필요한 RegistryFetcher와 분리해 의존성 해석을 독립적으로 테스트할 수 있게 합니다.
@@ -15,8 +18,8 @@ func ResolveDependencies(pkgNames []string, fetcher MetadataFetcher) ([]*Package
 	visited := make(map[string]bool)
 	visiting := make(map[string]bool)
 
-	var visit func(string) error
-	visit = func(name string) error {
+	var visit func(string, string) error
+	visit = func(name, constraint string) error {
 		if visiting[name] {
 			return fmt.Errorf("circular dependency detected: %s", name)
 		}
@@ -35,9 +38,22 @@ func ResolveDependencies(pkgNames []string, fetcher MetadataFetcher) ([]*Package
 		if p == nil {
 			return fmt.Errorf("metadata for %s is nil", name)
 		}
+		if constraint != "" && !version.Satisfies(p.Version, constraint) {
+			return fmt.Errorf("%s version %s does not satisfy %s", name, p.Version, constraint)
+		}
 
-		for _, dependency := range p.Dependencies {
-			if err := visit(dependency); err != nil {
+		dependencies := append([]string(nil), p.Dependencies...)
+		seenDependencies := make(map[string]bool, len(dependencies))
+		for _, dependency := range dependencies {
+			seenDependencies[dependency] = true
+		}
+		for dependency := range p.DependencyConstraints {
+			if !seenDependencies[dependency] {
+				dependencies = append(dependencies, dependency)
+			}
+		}
+		for _, dependency := range dependencies {
+			if err := visit(dependency, p.DependencyConstraints[dependency]); err != nil {
 				return err
 			}
 		}
@@ -49,7 +65,7 @@ func ResolveDependencies(pkgNames []string, fetcher MetadataFetcher) ([]*Package
 	}
 
 	for _, name := range pkgNames {
-		if err := visit(name); err != nil {
+		if err := visit(name, ""); err != nil {
 			return nil, err
 		}
 	}

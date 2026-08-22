@@ -118,7 +118,12 @@ ppm install owner/repo1 owner/repo2
 
 ```bash
 ppm list   # 설치된 패키지 및 버전 확인
+ppm list --json   # 자동화용 JSON 출력
 ppm info owner/repo  # 원격 레지스트리의 패키지 상세 정보 확인
+ppm info owner/repo --json
+ppm doctor         # 설정·경로·설치 상태 진단
+ppm verify         # 설치된 패키지와 바이너리 검증
+ppm completion bash # Bash 자동완성 스크립트 생성
 ```
 
 ### 4. 패키지 업데이트
@@ -128,6 +133,14 @@ ppm info owner/repo  # 원격 레지스트리의 패키지 상세 정보 확인
 ```bash
 ppm update          # 모든 패키지 업데이트
 ppm update owner/repo  # 특정 패키지만 업데이트
+ppm update --check      # 업데이트 없이 변경 가능 버전 확인
+ppm outdated            # 업데이트 가능한 패키지 목록
+ppm changelog owner/repo # 최신 릴리스 노트 확인
+ppm lock owner/repo    # 버전과 의존성을 ppm.lock에 기록
+ppm install --locked owner/repo  # lockfile 기준으로 설치
+ppm install --locked --offline owner/repo  # 캐시에서만 설치
+ppm install --atomic owner/repo1 owner/repo2  # 전체 성공 시에만 변경
+ppm manifest validate   # ppm.json 검증
 ```
 
 ### 5. 패키지 삭제
@@ -136,6 +149,16 @@ ppm update owner/repo  # 특정 패키지만 업데이트
 
 ```bash
 ppm uninstall owner/repo1 repo2
+
+# 설치 계획만 확인 (실제 변경 없음)
+ppm install --dry-run owner/repo
+
+# ppm 자신을 최신 GitHub Release로 업데이트
+ppm self-update
+
+# 다운로드 캐시 관리
+ppm cache list
+ppm cache clean
 ```
 
 ## 설정 상세 (`config.yaml`)
@@ -154,7 +177,8 @@ ppm config set install_path ~/.local/bin
 
 `ppm config set`은 설정 파일이 아직 없으면 기본 설정을 생성한 뒤 지정한 값을 저장합니다.
 
-- `registry_url`: 레지스트리 API URL (기본값: `https://api.github.com`). 커스텀 레지스트리에서 패키지를 찾지 못하면 GitHub 공개 API로 한 번 더 조회합니다.
+- `registry_url`: 기본 레지스트리 API URL (기본값: `https://api.github.com`).
+- `registries`: 기본 레지스트리 실패 시 순서대로 시도할 mirror API URL 목록입니다. 마지막에는 GitHub 공개 API가 자동으로 시도됩니다.
 - `auth_token`: GitHub Personal Access Token (PAT)
 - `install_path`: 바이너리가 설치될 경로 (기본값: `~/.local/bin` 또는 Windows 사용자 홈 `.local\bin`)
 

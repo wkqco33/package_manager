@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"runtime"
 	"strings"
 	"time"
@@ -16,8 +17,14 @@ import (
 
 // GitHubRegistry는 GitHub용 pkg.RegistryFetcher 구현체입니다.
 type GitHubRegistry struct {
-	Token string
-	URL   string // 기본값: https://api.github.com
+	Token   string
+	URL     string // 기본값: https://api.github.com
+	Mirrors []string
+}
+
+// NewGitHubRegistry creates a registry client with the primary URL and optional mirrors.
+func NewGitHubRegistry(token, primary string, mirrors []string) *GitHubRegistry {
+	return &GitHubRegistry{Token: token, URL: primary, Mirrors: append([]string(nil), mirrors...)}
 }
 
 // GitHubRegistry가 pkg.RegistryFetcher를 구현하는지 확인
@@ -31,6 +38,8 @@ var downloadHTTPClient = &http.Client{
 	Timeout: 10 * time.Minute,
 }
 
+const downloadMaxAttempts = 3
+
 type ghAsset struct {
 	Id                 int64  `json:"id"`
 	Name               string `json:"name"`
@@ -40,6 +49,7 @@ type ghAsset struct {
 type ghRelease struct {
 	TagName    string    `json:"tag_name"`
 	Name       string    `json:"name"`
+	Body       string    `json:"body"`
 	TarballUrl string    `json:"tarball_url"`
 	Assets     []ghAsset `json:"assets"`
 }
@@ -49,18 +59,79 @@ type ghTag struct {
 	TarballUrl string `json:"tarball_url"`
 }
 
+type SearchResult struct {
+	Name        string `json:"full_name"`
+	Description string `json:"description"`
+	URL         string `json:"html_url"`
+}
+
+type searchResponse struct {
+	Items []SearchResult `json:"items"`
+}
+
 type ppmMeta struct {
-	Description  string   `json:"description"`
-	Author       string   `json:"author"`
-	Homepage     string   `json:"homepage"`
-	BinName      string   `json:"bin_name"`
-	Dependencies []string `json:"dependencies,omitempty"`
+	Description           string            `json:"description"`
+	Author                string            `json:"author"`
+	Homepage              string            `json:"homepage"`
+	BinName               string            `json:"bin_name"`
+	Dependencies          []string          `json:"dependencies,omitempty"`
+	DependencyConstraints map[string]string `json:"dependency_constraints,omitempty"`
+}
+
+// UnmarshalJSON accepts both the legacy string-array and the new map form.
+func (m *ppmMeta) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Description           string            `json:"description"`
+		Author                string            `json:"author"`
+		Homepage              string            `json:"homepage"`
+		BinName               string            `json:"bin_name"`
+		Dependencies          json.RawMessage   `json:"dependencies"`
+		DependencyConstraints map[string]string `json:"dependency_constraints"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	m.Description, m.Author, m.Homepage, m.BinName = raw.Description, raw.Author, raw.Homepage, raw.BinName
+	m.DependencyConstraints = raw.DependencyConstraints
+	if len(raw.Dependencies) == 0 || string(raw.Dependencies) == "null" {
+		return nil
+	}
+	if err := json.Unmarshal(raw.Dependencies, &m.Dependencies); err == nil {
+		return nil
+	}
+	return json.Unmarshal(raw.Dependencies, &m.DependencyConstraints)
 }
 
 var publicGitHubAPIURL = "https://api.github.com"
 
 var errLatestReleaseNotFound = errors.New("github latest release not found")
 var errRepositoryNotFound = errors.New("github repository not found")
+
+// Search searches repositories visible to the configured GitHub account.
+func (g *GitHubRegistry) Search(query string) ([]SearchResult, error) {
+	base := strings.TrimRight(g.URL, "/")
+	if base == "" {
+		base = publicGitHubAPIURL
+	}
+	searchURL := fmt.Sprintf("%s/search/repositories?q=%s&per_page=30", base, url.QueryEscape(query))
+	req, err := g.newRequest("GET", searchURL, "application/vnd.github+json")
+	if err != nil {
+		return nil, err
+	}
+	resp, err := apiHTTPClient.Do(req)
+	if err != nil {
+		return nil, apperr.Wrap(apperr.CodeNetwork, err, "repository search failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, apperr.New(apperr.CodeRegistry, "repository search failed: HTTP %d", resp.StatusCode)
+	}
+	var result searchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, apperr.Wrap(apperr.CodeRegistry, err, "invalid search response")
+	}
+	return result.Items, nil
+}
 
 // GetMetadata는 GitHub 저장소의 최신 릴리스 메타데이터를 조회합니다.
 func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
@@ -70,9 +141,10 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	}
 
 	p := &pkg.Package{
-		Name:        pkgName,
-		Version:     rel.TagName,
-		RegistryURL: baseURL,
+		Name:         pkgName,
+		Version:      rel.TagName,
+		RegistryURL:  baseURL,
+		ReleaseNotes: rel.Body,
 	}
 	if rel.TagName == "" {
 		return nil, apperr.New(apperr.CodeRegistry, "failed to determine a version for %s", pkgName)
@@ -95,6 +167,7 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	p.Homepage = meta.Homepage
 	p.BinName = meta.BinName
 	p.Dependencies = meta.Dependencies
+	p.DependencyConstraints = meta.DependencyConstraints
 
 	return p, nil
 }
@@ -127,14 +200,25 @@ func (g *GitHubRegistry) resolveReleaseMetadata(pkgName string) (string, ghRelea
 }
 
 func (g *GitHubRegistry) apiBaseCandidates() []string {
-	baseURL := strings.TrimRight(g.URL, "/")
-	if baseURL == "" {
-		baseURL = publicGitHubAPIURL
+	candidates := make([]string, 0, len(g.Mirrors)+2)
+	add := func(value string) {
+		value = strings.TrimRight(value, "/")
+		if value == "" {
+			return
+		}
+		for _, existing := range candidates {
+			if existing == value {
+				return
+			}
+		}
+		candidates = append(candidates, value)
 	}
-	if baseURL == publicGitHubAPIURL {
-		return []string{publicGitHubAPIURL}
+	add(g.URL)
+	for _, mirror := range g.Mirrors {
+		add(mirror)
 	}
-	return []string{baseURL, publicGitHubAPIURL}
+	add(publicGitHubAPIURL)
+	return candidates
 }
 
 func (g *GitHubRegistry) newRequest(method, url, acceptHeader string) (*http.Request, error) {
@@ -321,15 +405,29 @@ func (g *GitHubRegistry) DownloadSource(p *pkg.Package) (io.ReadCloser, int64, e
 		return nil, 0, err
 	}
 
-	resp, err := downloadHTTPClient.Do(req)
-	if err != nil {
-		return nil, 0, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute download request")
+	var lastErr error
+	for attempt := 1; attempt <= downloadMaxAttempts; attempt++ {
+		// 요청 본문은 재시도마다 새로 생성해야 합니다.
+		req, err = g.newRequest("GET", downloadURL, acceptHeader)
+		if err != nil {
+			return nil, 0, err
+		}
+		resp, err := downloadHTTPClient.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			return resp.Body, resp.ContentLength, nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			resp.Body.Close()
+			if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+				break
+			}
+		}
+		if attempt < downloadMaxAttempts {
+			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+		}
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, 0, apperr.New(apperr.CodeNetwork, "failed to download source: HTTP %d", resp.StatusCode)
-	}
-
-	return resp.Body, resp.ContentLength, nil
+	return nil, 0, apperr.Wrap(apperr.CodeNetwork, lastErr, "failed to download source after retries")
 }

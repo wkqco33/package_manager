@@ -3,6 +3,10 @@
 
 # 레지스트리 API 주소 (GitHub 사용 시 기본값 사용)
 registry_url: https://api.github.com
+# 기본 registry 실패 시 순서대로 시도할 mirror (선택)
+# registries:
+#   - https://packages.example.com/api
+#   - https://mirror.example.com/api
 
 # 프라이빗 레포지토리 접근을 위한 인증 토큰 (필수)
 auth_token: "your_personal_access_token_here"
