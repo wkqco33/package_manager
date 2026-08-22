@@ -1,5 +1,10 @@
 config.yaml
 
+# Local build artifacts
+ppm
+ppm.exe
+dist/
+
 # Created by https://www.toptal.com/developers/gitignore/api/go,visualstudiocode,macos,windows,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=go,visualstudiocode,macos,windows,linux
 
