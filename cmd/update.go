@@ -11,6 +11,7 @@ import (
 	"github.com/wkqco33/package_manager/internal/logger"
 	"github.com/wkqco33/package_manager/internal/pkg"
 	"github.com/wkqco33/package_manager/internal/registry"
+	"github.com/wkqco33/package_manager/internal/ui"
 	"github.com/wkqco33/package_manager/internal/version"
 )
 
@@ -61,9 +62,10 @@ func newUpdateCommand(deps updateDependencies) *wcli.Command {
 			if fetcher == nil {
 				return fmt.Errorf("update command requires a registry fetcher")
 			}
+			metadataFetcher := withUpdateProgress(fetcher)
 			if updateCheck {
 				for _, installedPackage := range installed {
-					latest, fetchErr := fetcher.GetMetadata(installedPackage.Name)
+					latest, fetchErr := metadataFetcher.GetMetadata(installedPackage.Name)
 					if fetchErr != nil {
 						return fetchErr
 					}
@@ -74,9 +76,10 @@ func newUpdateCommand(deps updateDependencies) *wcli.Command {
 				return nil
 			}
 			updater := app.PackageUpdater{
-				Fetcher:     fetcher,
-				InstallPath: cfg.InstallPath,
-				NewArchiver: deps.NewArchiver,
+				Fetcher:         fetcher,
+				MetadataFetcher: metadataFetcher,
+				InstallPath:     cfg.InstallPath,
+				NewArchiver:     deps.NewArchiver,
 			}
 			result, err := updater.Update(installed, ctx.Args)
 			if err != nil {
@@ -94,6 +97,21 @@ func newUpdateCommand(deps updateDependencies) *wcli.Command {
 			return nil
 		},
 	}
+}
+
+type updateMetadataFetcher struct {
+	fetcher pkg.MetadataFetcher
+}
+
+func (f updateMetadataFetcher) GetMetadata(name string) (*pkg.Package, error) {
+	spinner := ui.NewSpinner("Fetching metadata for " + name + "...")
+	spinner.Start()
+	defer spinner.Stop()
+	return f.fetcher.GetMetadata(name)
+}
+
+func withUpdateProgress(fetcher pkg.MetadataFetcher) pkg.MetadataFetcher {
+	return updateMetadataFetcher{fetcher: fetcher}
 }
 
 func init() {

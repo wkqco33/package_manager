@@ -99,44 +99,78 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 
 // Spinner 구조체 (다운로드 등 진행도를 알 수 없을 때 사용)
 type Spinner struct {
-	CurrentIdx int
-	Prefix     string
-	StopChan   chan struct{}
+	CurrentIdx  int
+	Prefix      string
+	StopChan    chan struct{}
+	doneChan    chan struct{}
+	startedChan chan struct{}
+	startOnce   sync.Once
+	stopOnce    sync.Once
 }
 
 // NewSpinner는 새로운 Spinner 구조체를 생성합니다.
 func NewSpinner(prefix string) *Spinner {
 	return &Spinner{
-		CurrentIdx: 0,
-		Prefix:     prefix,
-		StopChan:   make(chan struct{}),
+		CurrentIdx:  0,
+		Prefix:      prefix,
+		StopChan:    make(chan struct{}),
+		doneChan:    make(chan struct{}),
+		startedChan: make(chan struct{}),
 	}
 }
 
 // Start는 고루틴을 통해 스피너를 출력합니다. 채널 데이터로 종료 흐름을 제어합니다.
 func (s *Spinner) Start() {
-	go func() {
-		for {
-			select {
-			case <-s.StopChan:
-				return
-			default:
+	s.startOnce.Do(func() {
+		select {
+		case <-s.StopChan:
+			close(s.startedChan)
+			close(s.doneChan)
+			return
+		default:
+		}
+		close(s.startedChan)
+		go func() {
+			defer close(s.doneChan)
+			ticker := time.NewTicker(80 * time.Millisecond)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-s.StopChan:
+					return
+				default:
+				}
+
 				stdoutMu.Lock()
 				fmt.Printf("\r\033[K%s %s", Accent(spinnerFrames[s.CurrentIdx]), Muted(s.Prefix))
 				stdoutMu.Unlock()
 				s.CurrentIdx = (s.CurrentIdx + 1) % len(spinnerFrames)
-				time.Sleep(80 * time.Millisecond) // 조금 빠른 스피너
+
+				select {
+				case <-s.StopChan:
+					return
+				case <-ticker.C:
+				}
 			}
-		}
-	}()
+		}()
+	})
 }
 
 // Stop은 채널을 닫아서 스피너를 멈추고 현재 줄을 지웁니다.
 func (s *Spinner) Stop() {
-	close(s.StopChan)
-	stdoutMu.Lock()
-	fmt.Print("\r\033[K")
-	stdoutMu.Unlock()
+	s.stopOnce.Do(func() {
+		close(s.StopChan)
+		select {
+		case <-s.startedChan:
+			<-s.doneChan
+		default:
+			return
+		}
+		stdoutMu.Lock()
+		fmt.Print("\r\033[K")
+		stdoutMu.Unlock()
+	})
 }
 
 // ProgressReader는 io.Reader를 감싸서 읽을 때마다 ProgressBar를 업데이트하는 래퍼입니다.

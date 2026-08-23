@@ -11,6 +11,7 @@ import (
 	"github.com/wkqco33/package_manager/internal/apperr"
 	"github.com/wkqco33/package_manager/internal/config"
 	"github.com/wkqco33/package_manager/internal/logger"
+	"github.com/wkqco33/package_manager/internal/ui"
 
 	"github.com/wkqco33/wcli"
 )
@@ -64,6 +65,9 @@ func newCleanCommand(deps cleanDependencies) *wcli.Command {
 
 func performCleanAll(packagesDir, installPath string) error {
 	logger.Info("모든 패키지 및 링크를 삭제합니다...")
+	spinner := ui.NewSpinner("패키지 및 링크를 정리하는 중...")
+	spinner.Start()
+	defer spinner.Stop()
 	cleaner := app.PackageCleaner{
 		ReadDir:   os.ReadDir,
 		RemoveAll: os.RemoveAll,
@@ -71,6 +75,7 @@ func performCleanAll(packagesDir, installPath string) error {
 		Readlink:  os.Readlink,
 	}
 	result, err := cleaner.CleanAll(packagesDir, installPath)
+	spinner.Stop()
 	if err != nil {
 		return apperr.Wrap(apperr.CodeFileSystem, err, "패키지 정리 실패")
 	}
@@ -83,12 +88,16 @@ func performCleanAll(packagesDir, installPath string) error {
 
 func performCleanUnused(packagesDir, installPath string) error {
 	logger.Info("사용하지 않는 구버전 패키지를 정리합니다...")
+	spinner := ui.NewSpinner("사용하지 않는 패키지를 정리하는 중...")
+	spinner.Start()
+	defer spinner.Stop()
 	cleaner := app.PackageCleaner{
 		ReadDir:           os.ReadDir,
 		RemoveAll:         os.RemoveAll,
 		CollectActiveDirs: collectActiveDirs,
 	}
 	removedCount, err := cleaner.CleanUnused(packagesDir, installPath)
+	spinner.Stop()
 	if err != nil {
 		return apperr.Wrap(apperr.CodeFileSystem, err, "패키지 정리 실패")
 	}

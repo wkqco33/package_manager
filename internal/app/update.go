@@ -17,9 +17,10 @@ type UpdateResult struct {
 // PackageUpdater resolves requested packages and delegates installation to the
 // same installer service used by the install command.
 type PackageUpdater struct {
-	Fetcher     pkg.RegistryFetcher
-	InstallPath string
-	NewArchiver ArchiverFactory
+	Fetcher         pkg.RegistryFetcher
+	MetadataFetcher pkg.MetadataFetcher
+	InstallPath     string
+	NewArchiver     ArchiverFactory
 }
 
 // Update updates requested packages. When requested is empty, all modern
@@ -60,7 +61,11 @@ func (s PackageUpdater) Update(installed []*pkg.Package, requested []string) (Up
 		return UpdateResult{Legacy: legacy}, nil
 	}
 
-	resolved, err := pkg.ResolveDependencies(targets, s.Fetcher)
+	metadataFetcher := pkg.MetadataFetcher(s.Fetcher)
+	if s.MetadataFetcher != nil {
+		metadataFetcher = s.MetadataFetcher
+	}
+	resolved, err := pkg.ResolveDependencies(targets, metadataFetcher)
 	if err != nil {
 		return UpdateResult{}, err
 	}
