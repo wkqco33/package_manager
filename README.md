@@ -116,9 +116,13 @@ ppm install owner/repo1 owner/repo2
 
 설치된 패키지의 버전과 상세 정보를 확인합니다.
 
+`ppm apps`는 ppm으로 설치 가능한 기본 앱 패키지 목록을 소개합니다. 각 앱의 설명과 홈페이지를 보여주며, 이미 설치된 앱은 `설치됨`으로 표시됩니다. `--json` 플래그로 자동화에 활용할 수 있습니다.
+
 ```bash
 ppm list   # 설치된 패키지 및 버전 확인
+ppm apps   # ppm으로 설치 가능한 기본 앱 패키지 소개
 ppm list --json   # 자동화용 JSON 출력
+ppm apps --json   # 기본 앱 목록을 JSON으로 출력 (설치 상태 포함)
 ppm info owner/repo  # 원격 레지스트리의 패키지 상세 정보 확인
 ppm info owner/repo --json
 ppm doctor         # 설정·경로·설치 상태 진단

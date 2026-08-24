@@ -1,5 +1,14 @@
 # 변경 이력 (CHANGE_LOG.md)
 
+## [Unreleased]
+
+### 추가 사항 (Features)
+
+- **기본 앱 패키지 소개 커맨드 추가 ([apps.go](cmd/apps.go), [apps.go](internal/apps/apps.go))**
+  - `ppm apps` 커맨드로 ppm으로 설치 가능한 기본 앱 패키지 목록을 소개합니다.
+  - 각 앱의 설명·홈페이지와 함께 설치 상태를 표시하며, `--json` 플래그로 자동화에 활용할 수 있습니다.
+  - 기본 앱 목록은 현재 PC에 실제 설치되어 ppm으로 설치 가능함이 확인된 앱들로 구성됩니다.
+
 ## [1.1.0] - 2026-07-16
 
 ### 개선 사항 (Refactoring)
