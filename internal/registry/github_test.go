@@ -274,6 +274,37 @@ func TestGitHubRegistry_GetMetadataRetriesWithoutTokenOnAuthRejection(t *testing
 	}
 }
 
+func TestGitHubRegistry_GetMetadataFallsBackToPublicReleasePageOnRateLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/releases/latest":
+			w.WriteHeader(http.StatusForbidden)
+		case "/owner/repo/releases/latest":
+			http.Redirect(w, r, "/owner/repo/releases/tag/v2.1.0", http.StatusFound)
+		case "/owner/repo/releases/tag/v2.1.0":
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprintf(w, `<a href="/owner/repo/releases/download/v2.1.0/ppm-%s-%s.tar.gz">asset</a>`, runtime.GOOS, runtime.GOARCH)
+		case "/owner/repo/contents/ppm.json":
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	g := &GitHubRegistry{URL: server.URL}
+	p, err := g.GetMetadata("owner/repo")
+	if err != nil {
+		t.Fatalf("GetMetadata failed through release page fallback: %v", err)
+	}
+	if p.Version != "v2.1.0" {
+		t.Errorf("Version = %q, want v2.1.0", p.Version)
+	}
+	if !strings.Contains(p.Source, "/releases/download/v2.1.0/") {
+		t.Errorf("Source = %q, want a release asset URL", p.Source)
+	}
+}
+
 // TestGitHubRegistry_GetMetadataKeepsAuthFailureForPrivateRepo는 private 저장소가
 // 토큰 없이도 여전히 실패하여 인증 오류가 보존됨을 검증합니다.
 func TestGitHubRegistry_GetMetadataKeepsAuthFailureForPrivateRepo(t *testing.T) {

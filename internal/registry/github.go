@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"path"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -387,6 +390,11 @@ func (g *GitHubRegistry) fetchLatestRelease(pkgName, apiURL string) (ghRelease, 
 		return ghRelease{}, errLatestReleaseNotFound
 	}
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusForbidden {
+			if rel, webErr := g.fetchLatestReleaseFromWeb(pkgName, apiURL); webErr == nil {
+				return rel, nil
+			}
+		}
 		return ghRelease{}, apperr.New(apperr.CodeRegistry, "failed to get release info for %s: HTTP %d", pkgName, resp.StatusCode)
 	}
 
@@ -395,6 +403,83 @@ func (g *GitHubRegistry) fetchLatestRelease(pkgName, apiURL string) (ghRelease, 
 		return ghRelease{}, apperr.Wrap(apperr.CodeRegistry, err, "failed to decode github release metadata")
 	}
 	return rel, nil
+}
+
+var releaseAssetLinkPattern = regexp.MustCompile(`href=["']([^"']+/releases/download/[^"']+)["']`)
+
+// fetchLatestReleaseFromWeb avoids the unauthenticated REST API rate limit. The
+// public release page is still available without a GitHub token and contains
+// links to the release assets.
+func (g *GitHubRegistry) fetchLatestReleaseFromWeb(pkgName, apiURL string) (ghRelease, error) {
+	webBase, err := githubWebBaseURL(apiURL)
+	if err != nil {
+		return ghRelease{}, err
+	}
+	pageURL := fmt.Sprintf("%s/%s/releases/latest", strings.TrimRight(webBase, "/"), pkgName)
+	req, err := http.NewRequest(http.MethodGet, pageURL, nil)
+	if err != nil {
+		return ghRelease{}, err
+	}
+	resp, err := apiHTTPClient.Do(req)
+	if err != nil {
+		return ghRelease{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Request == nil {
+		return ghRelease{}, fmt.Errorf("public release page returned HTTP %d", resp.StatusCode)
+	}
+
+	tag := releaseTagFromURL(resp.Request.URL)
+	if tag == "" {
+		return ghRelease{}, errLatestReleaseNotFound
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ghRelease{}, err
+	}
+	rel := ghRelease{TagName: tag}
+	for _, match := range releaseAssetLinkPattern.FindAllStringSubmatch(string(data), -1) {
+		assetURL, err := url.Parse(html.UnescapeString(match[1]))
+		if err != nil || assetURL.Path == "" {
+			continue
+		}
+		assetURL.Scheme = resp.Request.URL.Scheme
+		assetURL.Host = resp.Request.URL.Host
+		rel.Assets = append(rel.Assets, ghAsset{
+			Name:               path.Base(assetURL.Path),
+			BrowserDownloadUrl: assetURL.String(),
+		})
+	}
+	if len(rel.Assets) == 0 {
+		rel.TarballUrl = fmt.Sprintf("https://codeload.github.com/%s/tar.gz/refs/tags/%s", pkgName, url.PathEscape(tag))
+	}
+	return rel, nil
+}
+
+func githubWebBaseURL(apiURL string) (string, error) {
+	parsed, err := url.Parse(apiURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid github api URL: %s", apiURL)
+	}
+	if parsed.Host == "api.github.com" {
+		parsed.Host = "github.com"
+	}
+	parsed.Path = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func releaseTagFromURL(releaseURL *url.URL) string {
+	parts := strings.Split(strings.Trim(releaseURL.Path, "/"), "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "tag" || parts[i] == "download" {
+			if tag, err := url.PathUnescape(parts[i+1]); err == nil {
+				return tag
+			}
+		}
+	}
+	return ""
 }
 
 func (g *GitHubRegistry) fetchLatestTag(pkgName, baseURL string) (ghTag, error) {
