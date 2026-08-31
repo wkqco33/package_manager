@@ -124,11 +124,7 @@ func (g *GitHubRegistry) fetchAssetSignature(baseURL, pkgName string, assets []g
 		return "", fmt.Errorf("signature asset for %s not found", assetName)
 	}
 	endpoint := fmt.Sprintf("%s/repos/%s/releases/assets/%d", strings.TrimRight(baseURL, "/"), pkgName, signatureAsset.Id)
-	req, err := g.newRequest("GET", endpoint, "application/octet-stream")
-	if err != nil {
-		return "", err
-	}
-	resp, err := apiHTTPClient.Do(req)
+	resp, err := g.doRequest("GET", endpoint, "application/octet-stream", nil, apiHTTPClient)
 	if err != nil {
 		return "", err
 	}
@@ -159,11 +155,7 @@ func (g *GitHubRegistry) fetchAssetChecksum(baseURL, pkgName string, assets []gh
 		return "", fmt.Errorf("checksum asset for %s not found", assetName)
 	}
 	endpoint := fmt.Sprintf("%s/repos/%s/releases/assets/%d", strings.TrimRight(baseURL, "/"), pkgName, checksumAsset.Id)
-	req, err := g.newRequest("GET", endpoint, "application/octet-stream")
-	if err != nil {
-		return "", err
-	}
-	resp, err := apiHTTPClient.Do(req)
+	resp, err := g.doRequest("GET", endpoint, "application/octet-stream", nil, apiHTTPClient)
 	if err != nil {
 		return "", err
 	}
@@ -194,11 +186,7 @@ func (g *GitHubRegistry) Search(query string) ([]SearchResult, error) {
 		base = publicGitHubAPIURL
 	}
 	searchURL := fmt.Sprintf("%s/search/repositories?q=%s&per_page=30", base, url.QueryEscape(query))
-	req, err := g.newRequest("GET", searchURL, "application/vnd.github+json")
-	if err != nil {
-		return nil, err
-	}
-	resp, err := apiHTTPClient.Do(req)
+	resp, err := g.doRequest("GET", searchURL, "application/vnd.github+json", nil, apiHTTPClient)
 	if err != nil {
 		return nil, apperr.Wrap(apperr.CodeNetwork, err, "repository search failed")
 	}
@@ -338,14 +326,41 @@ func (g *GitHubRegistry) newRequest(method, url, acceptHeader string) (*http.Req
 	return req, nil
 }
 
+// doRequest는 HTTP 요청을 수행하되, 인증 토큰이 설정되어 있고 서버가 401/403으로
+// 거부한 경우에는 토큰 없이 한 번 더 재시도합니다. 이렇게 하면 잘못되거나 만료된
+// 토큰이 설정되어 있어도 public 저장소는 키 없이 다운로드할 수 있습니다.
+// private 저장소는 토큰 없이도 여전히 실패하므로 기존 동작이 보존됩니다.
+// extraHeaders는 요청에 추가로 설정할 헤더입니다(예: Range).
+func (g *GitHubRegistry) doRequest(method, url, acceptHeader string, extraHeaders map[string]string, client *http.Client) (*http.Response, error) {
+	req, err := g.newRequest(method, url, acceptHeader)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range extraHeaders {
+		req.Header.Set(k, v)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && g.Token != "" {
+		resp.Body.Close()
+		req, err = g.newRequest(method, url, acceptHeader)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range extraHeaders {
+			req.Header.Set(k, v)
+		}
+		req.Header.Del("Authorization")
+		return client.Do(req)
+	}
+	return resp, nil
+}
+
 func (g *GitHubRegistry) fetchPPMMetadata(baseURL, pkgName string) ppmMeta {
 	contentURL := fmt.Sprintf("%s/repos/%s/contents/ppm.json", baseURL, pkgName)
-	req, err := g.newRequest("GET", contentURL, "application/vnd.github.v3.raw")
-	if err != nil {
-		return ppmMeta{}
-	}
-
-	resp, err := apiHTTPClient.Do(req)
+	resp, err := g.doRequest("GET", contentURL, "application/vnd.github.v3.raw", nil, apiHTTPClient)
 	if err != nil {
 		return ppmMeta{}
 	}
@@ -362,12 +377,7 @@ func (g *GitHubRegistry) fetchPPMMetadata(baseURL, pkgName string) ppmMeta {
 }
 
 func (g *GitHubRegistry) fetchLatestRelease(pkgName, apiURL string) (ghRelease, error) {
-	req, err := g.newRequest("GET", apiURL, "application/vnd.github.v3+json")
-	if err != nil {
-		return ghRelease{}, err
-	}
-
-	resp, err := apiHTTPClient.Do(req)
+	resp, err := g.doRequest("GET", apiURL, "application/vnd.github.v3+json", nil, apiHTTPClient)
 	if err != nil {
 		return ghRelease{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github api request")
 	}
@@ -389,12 +399,7 @@ func (g *GitHubRegistry) fetchLatestRelease(pkgName, apiURL string) (ghRelease, 
 
 func (g *GitHubRegistry) fetchLatestTag(pkgName, baseURL string) (ghTag, error) {
 	tagsURL := fmt.Sprintf("%s/repos/%s/tags", baseURL, pkgName)
-	req, err := g.newRequest("GET", tagsURL, "application/vnd.github.v3+json")
-	if err != nil {
-		return ghTag{}, err
-	}
-
-	resp, err := apiHTTPClient.Do(req)
+	resp, err := g.doRequest("GET", tagsURL, "application/vnd.github.v3+json", nil, apiHTTPClient)
 	if err != nil {
 		return ghTag{}, apperr.Wrap(apperr.CodeNetwork, err, "failed to execute github tags request")
 	}
@@ -506,14 +511,11 @@ func (g *GitHubRegistry) DownloadSourceAt(p *pkg.Package, offset int64) (io.Read
 	}
 	var lastErr error
 	for attempt := 1; attempt <= downloadMaxAttempts; attempt++ {
-		req, err := g.newRequest("GET", downloadURL, acceptHeader)
-		if err != nil {
-			return nil, 0, false, err
-		}
+		var extraHeaders map[string]string
 		if offset > 0 {
-			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+			extraHeaders = map[string]string{"Range": fmt.Sprintf("bytes=%d-", offset)}
 		}
-		resp, err := downloadHTTPClient.Do(req)
+		resp, err := g.doRequest("GET", downloadURL, acceptHeader, extraHeaders, downloadHTTPClient)
 		if err == nil && (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent) {
 			return resp.Body, resp.ContentLength, offset > 0 && resp.StatusCode == http.StatusPartialContent, nil
 		}

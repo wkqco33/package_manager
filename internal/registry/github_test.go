@@ -231,3 +231,66 @@ func TestGitHubRegistry_DownloadSourceUsesResolvedRegistryURL(t *testing.T) {
 		t.Errorf("Content mismatch: got %s, want asset content", string(content))
 	}
 }
+
+// TestGitHubRegistry_GetMetadataRetriesWithoutTokenOnAuthRejection는 잘못되거나
+// 만료된 토큰이 설정되어 있어도 public 저장소는 토큰 없이 재시도하여 다운로드할 수
+// 있음을 검증합니다.
+func TestGitHubRegistry_GetMetadataRetriesWithoutTokenOnAuthRejection(t *testing.T) {
+	var authedRequests, anonymousRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			authedRequests++
+			// 잘못된 토큰이면 GitHub처럼 401을 반환합니다.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		anonymousRequests++
+		switch r.URL.Path {
+		case "/repos/owner/repo/releases/latest":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"tag_name":"v1.0.0","tarball_url":"https://example.com/source.tar.gz","assets":[]}`)
+		case "/repos/owner/repo/contents/ppm.json":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintln(w, `{"description":"public package","author":"Tester"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	g := &GitHubRegistry{URL: server.URL, Token: "stale-or-invalid-token"}
+	p, err := g.GetMetadata("owner/repo")
+	if err != nil {
+		t.Fatalf("GetMetadata failed with stale token: %v", err)
+	}
+	if p.Version != "v1.0.0" {
+		t.Errorf("Expected version v1.0.0, got %s", p.Version)
+	}
+	if authedRequests == 0 {
+		t.Error("Expected at least one authenticated request before the anonymous retry")
+	}
+	if anonymousRequests == 0 {
+		t.Error("Expected an anonymous retry for the public repository")
+	}
+}
+
+// TestGitHubRegistry_GetMetadataKeepsAuthFailureForPrivateRepo는 private 저장소가
+// 토큰 없이도 여전히 실패하여 인증 오류가 보존됨을 검증합니다.
+func TestGitHubRegistry_GetMetadataKeepsAuthFailureForPrivateRepo(t *testing.T) {
+	originalPublicURL := publicGitHubAPIURL
+	defer func() { publicGitHubAPIURL = originalPublicURL }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 토큰 유무와 관계없이 private 저장소는 항상 404를 반환합니다.
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	publicGitHubAPIURL = server.URL
+
+	g := &GitHubRegistry{URL: server.URL, Token: "valid-token"}
+	_, err := g.GetMetadata("owner/private-repo")
+	if err == nil {
+		t.Fatal("Expected GetMetadata to fail for a private repository")
+	}
+}
