@@ -252,6 +252,7 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 		}
 	} else if rel.TarballUrl != "" {
 		p.Source = rel.TarballUrl
+		p.SourceFallback = true
 	} else {
 		return nil, apperr.New(apperr.CodeRegistry, "현재 플랫폼(%s/%s)에 맞는 바이너리 에셋이나 소스 아카이브를 찾을 수 없습니다.", runtime.GOOS, runtime.GOARCH)
 	}
@@ -449,22 +450,47 @@ func (g *GitHubRegistry) fetchLatestReleaseFromWeb(pkgName, apiURL string) (ghRe
 		return ghRelease{}, err
 	}
 	rel := ghRelease{TagName: tag}
-	for _, match := range releaseAssetLinkPattern.FindAllStringSubmatch(string(data), -1) {
-		assetURL, err := url.Parse(html.UnescapeString(match[1]))
-		if err != nil || assetURL.Path == "" {
-			continue
+	rel.Assets = parseReleaseAssets(data, resp.Request.URL)
+
+	// 최근 GitHub releases 페이지는 에셋 링크를 본문에 직접 렌더링하지
+	// 않고 expanded_assets 엔드포인트에서 별도로 제공합니다. REST API가
+	// rate limit에 걸린 경우에도 이 페이지는 비인증으로 접근할 수 있으므로
+	// 반드시 확인해야 합니다.
+	if len(rel.Assets) == 0 {
+		expandedURL := fmt.Sprintf("%s/%s/releases/expanded_assets/%s", strings.TrimRight(webBase, "/"), pkgName, url.PathEscape(tag))
+		if expandedReq, requestErr := http.NewRequest(http.MethodGet, expandedURL, nil); requestErr == nil {
+			if expandedResp, fetchErr := apiHTTPClient.Do(expandedReq); fetchErr == nil {
+				if expandedResp.StatusCode == http.StatusOK {
+					expandedData, readErr := io.ReadAll(expandedResp.Body)
+					if readErr == nil {
+						rel.Assets = parseReleaseAssets(expandedData, expandedResp.Request.URL)
+					}
+				}
+				expandedResp.Body.Close()
+			}
 		}
-		assetURL.Scheme = resp.Request.URL.Scheme
-		assetURL.Host = resp.Request.URL.Host
-		rel.Assets = append(rel.Assets, ghAsset{
-			Name:               path.Base(assetURL.Path),
-			BrowserDownloadUrl: assetURL.String(),
-		})
 	}
 	if len(rel.Assets) == 0 {
 		rel.TarballUrl = fmt.Sprintf("https://codeload.github.com/%s/tar.gz/refs/tags/%s", pkgName, url.PathEscape(tag))
 	}
 	return rel, nil
+}
+
+func parseReleaseAssets(data []byte, pageURL *url.URL) []ghAsset {
+	assets := make([]ghAsset, 0)
+	for _, match := range releaseAssetLinkPattern.FindAllStringSubmatch(string(data), -1) {
+		assetURL, err := url.Parse(html.UnescapeString(match[1]))
+		if err != nil || assetURL.Path == "" {
+			continue
+		}
+		assetURL.Scheme = pageURL.Scheme
+		assetURL.Host = pageURL.Host
+		assets = append(assets, ghAsset{
+			Name:               path.Base(assetURL.Path),
+			BrowserDownloadUrl: assetURL.String(),
+		})
+	}
+	return assets
 }
 
 func githubWebBaseURL(apiURL string) (string, error) {

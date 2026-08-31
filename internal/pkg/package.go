@@ -27,7 +27,8 @@ type Package struct {
 	Version               string            `json:"version"`
 	Source                string            `json:"source"`
 	RegistryURL           string            `json:"registry_url,omitempty"`
-	AssetID               int64             `json:"asset_id"` // 프라이빗 에셋 다운로드용 ID
+	AssetID               int64             `json:"asset_id"`                  // 프라이빗 에셋 다운로드용 ID
+	SourceFallback        bool              `json:"source_fallback,omitempty"` // 릴리스 에셋 대신 태그 소스를 사용했는지
 	Checksum              string            `json:"checksum"`
 	Signature             string            `json:"signature,omitempty"`
 	SignaturePublicKey    string            `json:"signature_public_key,omitempty"`
@@ -105,6 +106,9 @@ func InstallWithPackage(p *Package, fetcher RegistryFetcher, archiver Archiver, 
 func InstallWithPackageOptions(p *Package, fetcher RegistryFetcher, archiver Archiver, installPath string, options InstallOptions) error {
 	if err := p.Validate(); err != nil {
 		return err
+	}
+	if p.SourceFallback && !options.AllowSourceBuild {
+		return apperr.New(apperr.CodeArchive, "release asset for %s was not found; refusing to install the source tarball (use --from-source only for trusted repositories)", p.Name)
 	}
 
 	// 이미 설치됐는지 확인

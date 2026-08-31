@@ -344,6 +344,9 @@ func TestGitHubRegistry_GetMetadataRetriesWithoutTokenOnAuthRejection(t *testing
 	if p.Version != "v1.0.0" {
 		t.Errorf("Expected version v1.0.0, got %s", p.Version)
 	}
+	if !p.SourceFallback {
+		t.Error("Expected source tarball fallback to be marked explicitly")
+	}
 	if authedRequests == 0 {
 		t.Error("Expected at least one authenticated request before the anonymous retry")
 	}
@@ -360,6 +363,10 @@ func TestGitHubRegistry_GetMetadataFallsBackToPublicReleasePageOnRateLimit(t *te
 		case "/owner/repo/releases/latest":
 			http.Redirect(w, r, "/owner/repo/releases/tag/v2.1.0", http.StatusFound)
 		case "/owner/repo/releases/tag/v2.1.0":
+			// 최신 releases 페이지처럼 본문에는 에셋 링크가 없습니다.
+			w.Header().Set("Content-Type", "text/html")
+			fmt.Fprint(w, `<div data-testid="release-body">release</div>`)
+		case "/owner/repo/releases/expanded_assets/v2.1.0":
 			w.Header().Set("Content-Type", "text/html")
 			fmt.Fprintf(w, `<a href="/owner/repo/releases/download/v2.1.0/ppm-%s-%s.tar.gz">asset</a>`, runtime.GOOS, runtime.GOARCH)
 		case "/owner/repo/contents/ppm.json":
@@ -380,6 +387,9 @@ func TestGitHubRegistry_GetMetadataFallsBackToPublicReleasePageOnRateLimit(t *te
 	}
 	if !strings.Contains(p.Source, "/releases/download/v2.1.0/") {
 		t.Errorf("Source = %q, want a release asset URL", p.Source)
+	}
+	if p.SourceFallback {
+		t.Error("Expected expanded release asset to avoid source fallback")
 	}
 }
 
