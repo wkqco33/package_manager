@@ -64,6 +64,17 @@ func TestGitHubRegistry_GetMetadata(t *testing.T) {
 	}
 }
 
+func TestGitHubRegistry_GetMetadataRejectsInvalidPackageName(t *testing.T) {
+	g := &GitHubRegistry{}
+	for _, name := range []string{"cpp_generator", "/repo", "owner/", "owner/repo/extra"} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := g.GetMetadata(name); err == nil || !strings.Contains(err.Error(), "owner/repo") {
+				t.Fatalf("expected owner/repo validation error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestGitHubRegistry_GetMetadataFallsBackToLatestTag(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

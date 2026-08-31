@@ -206,6 +206,10 @@ func (g *GitHubRegistry) Search(query string) ([]SearchResult, error) {
 
 // GetMetadata는 GitHub 저장소의 최신 릴리스 메타데이터를 조회합니다.
 func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
+	parts := strings.Split(pkgName, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, apperr.New(apperr.CodeInvalidInput, "package name must use the owner/repo format: %s", pkgName)
+	}
 	if len(g.TrustedOwners) > 0 && !g.isTrustedOwner(pkgName) {
 		return nil, apperr.New(apperr.CodeRegistry, "repository owner for %s is not trusted", pkgName)
 	}
