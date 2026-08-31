@@ -246,6 +246,39 @@ func TestGitHubRegistry_DownloadSource(t *testing.T) {
 	}
 }
 
+func TestGitHubRegistry_DownloadSourcePrefersBrowserDownloadURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/releases/download/v1.0.0/tool-linux-amd64" {
+			t.Fatalf("Unexpected path: %s", r.URL.Path)
+		}
+		// 공개 에셋 URL은 토큰 없이도 실제 바이너리 바이트를 반환해야 합니다.
+		w.Header().Set("Content-Type", "application/octet-stream")
+		fmt.Fprint(w, "ELF binary content")
+	}))
+	defer server.Close()
+
+	g := &GitHubRegistry{URL: "https://api.github.com"}
+	p := &pkg.Package{
+		Name:    "owner/repo",
+		Source:  server.URL + "/releases/download/v1.0.0/tool-linux-amd64",
+		AssetID: 99,
+	}
+
+	body, _, err := g.DownloadSource(p)
+	if err != nil {
+		t.Fatalf("DownloadSource failed: %v", err)
+	}
+	defer body.Close()
+
+	content, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if string(content) != "ELF binary content" {
+		t.Errorf("Content mismatch: got %q", content)
+	}
+}
+
 func TestGitHubRegistry_DownloadSourceUsesResolvedRegistryURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/owner/repo/releases/assets/99" {

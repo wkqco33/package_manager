@@ -593,17 +593,27 @@ func (g *GitHubRegistry) DownloadSource(p *pkg.Package) (io.ReadCloser, int64, e
 // DownloadSourceAt uses HTTP Range when offset is non-zero. The bool result
 // tells callers whether the server accepted the range (206 Partial Content).
 func (g *GitHubRegistry) DownloadSourceAt(p *pkg.Package, offset int64) (io.ReadCloser, int64, bool, error) {
+	// browser_download_url은 GitHub가 공개 에셋을 실제 바이트로 내려주는
+	// URL입니다. 인증 토큰이 없는 public 저장소에서 Asset API endpoint를
+	// 호출하면 GitHub가 에셋 대신 JSON 메타데이터(또는 오류 응답)를 반환할
+	// 수 있고, 그 응답이 바이너리로 저장되어 "Exec format error"가 발생합니다.
+	//
+	// 토큰이 없을 때는 browser_download_url을 사용하고, 토큰이 있을 때는
+	// private 저장소도 지원하도록 Asset API endpoint를 사용합니다. Source가
+	// 없는 하위 호환 메타데이터는 토큰 유무와 관계없이 API endpoint를
+	// fallback으로 사용합니다.
 	downloadURL := p.Source
-	if p.AssetID > 0 {
+	acceptHeader := ""
+	if p.AssetID > 0 && (g.Token != "" || downloadURL == "") {
 		assetBaseURL := p.RegistryURL
 		if assetBaseURL == "" {
 			assetBaseURL = g.URL
 		}
 		downloadURL = fmt.Sprintf("%s/repos/%s/releases/assets/%d", strings.TrimRight(assetBaseURL, "/"), p.Name, p.AssetID)
-	}
-	acceptHeader := ""
-	if p.AssetID > 0 {
 		acceptHeader = "application/octet-stream"
+	}
+	if downloadURL == "" {
+		return nil, 0, false, apperr.New(apperr.CodeNetwork, "download URL is empty for %s", p.Name)
 	}
 	var lastErr error
 	for attempt := 1; attempt <= downloadMaxAttempts; attempt++ {
