@@ -97,6 +97,40 @@ func TestGitHubRegistry_GetMetadataFallsBackToLatestTag(t *testing.T) {
 	}
 }
 
+func TestGitHubRegistry_GetMetadataRecoversAssetsMissingFromAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/releases/latest":
+			if r.Header.Get("Accept") != "" {
+				fmt.Fprint(w, `{"tag_name":"v1.2.5","tarball_url":"https://example.com/source.tar.gz","assets":[]}`)
+				return
+			}
+			http.Redirect(w, r, "/owner/repo/releases/tag/v1.2.5", http.StatusFound)
+		case "/owner/repo/releases/latest":
+			http.Redirect(w, r, "/owner/repo/releases/tag/v1.2.5", http.StatusFound)
+		case "/owner/repo/releases/tag/v1.2.5":
+			assetName := fmt.Sprintf("repo_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+			fmt.Fprintf(w, `<a href="/owner/repo/releases/download/v1.2.5/%s">%s</a>`, assetName, assetName)
+		case "/repos/owner/repo/contents/ppm.json":
+			fmt.Fprint(w, `{}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	g := &GitHubRegistry{URL: server.URL}
+	p, err := g.GetMetadata("owner/repo")
+	if err != nil {
+		t.Fatalf("GetMetadata failed: %v", err)
+	}
+
+	want := fmt.Sprintf("%s/owner/repo/releases/download/v1.2.5/repo_%s_%s.tar.gz", server.URL, runtime.GOOS, runtime.GOARCH)
+	if p.Source != want {
+		t.Fatalf("expected web release asset %q, got %q", want, p.Source)
+	}
+}
+
 func TestGitHubRegistry_GetMetadataFallsBackToPublicGitHubAPI(t *testing.T) {
 	originalPublicURL := publicGitHubAPIURL
 	defer func() { publicGitHubAPIURL = originalPublicURL }()

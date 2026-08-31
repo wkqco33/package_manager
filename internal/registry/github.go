@@ -226,6 +226,13 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 
 	// 현재 플랫폼에 맞는 최적 에셋 탐색
 	bestAsset := g.findBestAsset(rel.Assets)
+	if bestAsset == nil && len(rel.Assets) == 0 {
+		// 일부 GitHub API 응답/미러는 release assets를 생략합니다. 이때
+		// 소스 tarball을 선택하기 전에 공개 릴리스 페이지를 재확인합니다.
+		if webRel, webErr := g.fetchLatestReleaseFromWeb(pkgName, baseURL+"/repos/"+pkgName+"/releases/latest"); webErr == nil {
+			bestAsset = g.findBestAsset(webRel.Assets)
+		}
+	}
 	if bestAsset != nil {
 		p.Source = bestAsset.BrowserDownloadUrl
 		p.AssetID = bestAsset.Id
