@@ -18,6 +18,15 @@ func setupTempHome(t *testing.T) string {
 	t.Setenv("HOME", home)        // Unix
 	t.Setenv("USERPROFILE", home) // Windows (os.UserHomeDir)
 	t.Setenv("APPDATA", "")       // GetPaths가 home/AppData/Roaming 으로 파생
+	for _, name := range []string{
+		"PPM_CONFIG_DIR",
+		"PPM_INSTALL_DIR",
+		"PPM_CACHE_DIR",
+		"XDG_CONFIG_HOME",
+		"XDG_CACHE_HOME",
+	} {
+		t.Setenv(name, "")
+	}
 	return home
 }
 
