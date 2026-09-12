@@ -1,9 +1,16 @@
-# 변경 이력 (CHANGE_LOG.md)
+# 변경 이력 (CHANGELOG.md)
 
 ## [Unreleased]
 
 ### 추가 사항 (Features)
 
+- **CLI 안전성 및 자동화 개선**
+  - `uninstall`, `clean --all`, `self-update`에 TTY 확인과 `--yes`/`--force` 우회 옵션을 추가했습니다.
+  - root 전역 `--version`/`-v`, `--quiet`/`-q`, `--no-color`, `--no-input` 옵션을 추가하고,
+    알 수 없는 명령이 성공으로 처리되지 않도록 검증합니다.
+  - `auth_token`은 `--password-stdin` 또는 `--password-file`로 안전하게 설정할 수 있습니다.
+  - `PPM_CONFIG_DIR`, `PPM_CACHE_DIR`, `PPM_INSTALL_DIR`, `XDG_CONFIG_HOME`,
+    `XDG_CACHE_HOME` 경로 재정의를 지원합니다.
 - **기본 앱 패키지 소개 커맨드 추가 ([apps.go](cmd/apps.go), [apps.go](internal/apps/apps.go))**
   - `ppm apps` 커맨드로 ppm으로 설치 가능한 기본 앱 패키지 목록을 소개합니다.
   - 각 앱의 설명·홈페이지와 함께 설치 상태를 표시하며, `--json` 플래그로 자동화에 활용할 수 있습니다.

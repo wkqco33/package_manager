@@ -96,6 +96,10 @@ ppm init
 - **macOS**: `~/Library/Application Support/ppm`
 - **Windows**: `%AppData%\ppm`
 
+경로는 환경 변수로 재정의할 수 있습니다. `PPM_CONFIG_DIR`, `PPM_CACHE_DIR`,
+`PPM_INSTALL_DIR`은 각각 설정·캐시·실행 파일 경로를 직접 지정하며, Unix 계열에서는
+`XDG_CONFIG_HOME`과 `XDG_CACHE_HOME` 아래에 `ppm`을 붙인 경로도 지원합니다.
+
 ### 2. 패키지 설치
 
 프라이빗 레포지토리에서 현재 시스템에 맞는 바이너리를 설치합니다. GitHub Release가 없으면 최신 태그로 조회하며, 기본적으로는 사전 빌드된 바이너리 asset만 설치합니다.
@@ -154,6 +158,14 @@ ppm manifest validate   # ppm.json 검증
 ```bash
 ppm uninstall owner/repo1 repo2
 
+# 파괴적 작업은 기본적으로 TTY 확인이 필요합니다.
+ppm uninstall --yes owner/repo1
+ppm clean --all --force
+ppm self-update --yes
+
+# --no-input 또는 비TTY에서는 --yes/--force가 없으면 작업이 거부됩니다.
+ppm --no-input clean --all --yes
+
 # 설치 계획만 확인 (실제 변경 없음)
 ppm install --dry-run owner/repo
 
@@ -186,7 +198,9 @@ ppm config show
 
 # 설정 변경
 ppm config set registry_url https://api.github.com
-ppm config set auth_token <your-personal-access-token>
+ppm config set auth_token <your-personal-access-token> # 호환성 유지, 셸 기록 노출 경고
+printf '%s\n' "$GITHUB_TOKEN" | ppm config set auth_token --password-stdin
+ppm config set auth_token --password-file "$HOME/.config/ppm/token"
 ppm config set install_path ~/.local/bin
 ```
 
@@ -199,6 +213,9 @@ ppm config set install_path ~/.local/bin
 - `install_path`: 바이너리가 설치될 경로 (기본값: `~/.local/bin` 또는 Windows 사용자 홈 `.local\bin`)
 
 설정 파일에는 GitHub Personal Access Token이 저장되므로 파일 권한을 다른 사용자에게 공개하지 마세요. `ppm config show`는 토큰을 마스킹해서 출력합니다.
+
+`--password-stdin`과 `--password-file`은 토큰을 positional argument로 전달하지 않아
+셸 history 및 프로세스 목록 노출을 줄입니다.
 
 ## 개발
 

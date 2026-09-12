@@ -173,16 +173,35 @@ my-tool_windows_amd64.zip.sha256
 # 대화형 초기화
 ppm init
 
-# 또는 커맨드로 직접 설정
+# 기존 positional 방식 (호환성 유지, 셸 기록 노출 경고)
 ppm config set auth_token <PAT_TOKEN>
+
+# 권장: 표준 입력 또는 파일에서 읽기
+printf '%s\n' "$GITHUB_TOKEN" | ppm config set auth_token --password-stdin
+ppm config set auth_token --password-file "$HOME/.config/ppm/token"
 
 # 또는 환경 변수 주입 (CI/CD)
 export PPM_AUTH_TOKEN="<PAT_TOKEN>"
 ```
 
+토큰을 positional argument로 전달하면 셸 history와 프로세스 목록에 남을 수 있습니다.
+자동화 환경에서는 `--password-stdin` 또는 `--password-file`을 사용하세요.
+
 ---
 
-## 8. 배포 후 테스트 및 검증 명령어
+## 8. 파괴적 작업과 비대화형 실행
+
+`ppm uninstall`, `ppm clean --all`, `ppm self-update`는 기본적으로 TTY에서 확인을
+요구합니다. CI/CD나 스크립트에서는 의도를 명시적으로 `--yes` 또는 `--force`로
+전달해야 하며, `--no-input` 또는 비TTY에서 확인 없이 실행하면 오류가 반환됩니다.
+
+```bash
+ppm uninstall --yes owner/repo
+ppm clean --all --force
+ppm self-update --yes
+```
+
+## 9. 배포 후 테스트 및 검증 명령어
 
 패키지를 릴리스한 후 아래 명령어를 통해 배포 상태가 올바른지 단계별로 검증할 수 있습니다.
 

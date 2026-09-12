@@ -11,6 +11,8 @@ import (
 var (
 	// DebugMode는 디버그 로그 출력 여부를 제어합니다.
 	DebugMode bool
+	// Quiet는 일반 상태 출력을 억제합니다. 오류와 경고는 계속 stderr로 출력합니다.
+	Quiet bool
 
 	// slogLogger는 log/slog 기반 내부 구조화 로거입니다.
 	slogLogger *slog.Logger
@@ -26,14 +28,20 @@ func init() {
 
 // Info는 일반 사용자 메시지를 출력합니다.
 func Info(format string, a ...any) {
+	if Quiet {
+		return
+	}
 	msg := fmt.Sprintf(format, a...)
-	fmt.Println(ui.Info(msg))
+	fmt.Fprintln(os.Stderr, ui.Info(msg))
 }
 
 // Success는 성공 메시지를 출력합니다.
 func Success(format string, a ...any) {
+	if Quiet {
+		return
+	}
 	msg := fmt.Sprintf(format, a...)
-	fmt.Println(ui.Success(msg))
+	fmt.Fprintln(os.Stderr, ui.Success(msg))
 }
 
 // Error는 오류 메시지를 출력합니다.

@@ -14,12 +14,14 @@ import (
 type uninstallDependencies struct {
 	LoadConfig func() (*config.Config, error)
 	Remove     app.RemovePackage
+	Confirm    func() error
 }
 
 func defaultUninstallDependencies() uninstallDependencies {
 	return uninstallDependencies{
 		LoadConfig: config.LoadConfig,
 		Remove:     pkg.Uninstall,
+		Confirm:    func() error { return requireDestructiveConfirmation("uninstall", uninstallYes || uninstallForce) },
 	}
 }
 
@@ -27,7 +29,7 @@ func defaultUninstallDependencies() uninstallDependencies {
 var uninstallCmd = newUninstallCommand(defaultUninstallDependencies())
 
 func newUninstallCommand(deps uninstallDependencies) *wcli.Command {
-	return &wcli.Command{
+	command := &wcli.Command{
 		Use:   "uninstall [package...]",
 		Short: "설치된 패키지 삭제",
 		Long:  `설치된 바이너리 및 패키지 데이터 파일을 시스템에서 완전히 제거합니다. (예: ppm uninstall repo1 repo2)`,
@@ -41,6 +43,11 @@ func newUninstallCommand(deps uninstallDependencies) *wcli.Command {
 			}
 			if deps.Remove == nil {
 				return fmt.Errorf("uninstall command requires a remove operation")
+			}
+			if deps.Confirm != nil {
+				if err := deps.Confirm(); err != nil {
+					return err
+				}
 			}
 			uninstaller := app.PackageUninstaller{
 				InstallPath: cfg.InstallPath,
@@ -57,7 +64,15 @@ func newUninstallCommand(deps uninstallDependencies) *wcli.Command {
 			return nil
 		},
 	}
+	command.Flags().BoolVar(&uninstallYes, "yes", "y", false, "확인 없이 실행")
+	command.Flags().BoolVar(&uninstallForce, "force", "f", false, "확인 없이 강제 실행")
+	return command
 }
+
+var (
+	uninstallYes   bool
+	uninstallForce bool
+)
 
 func init() {
 	rootCmd.AddCommand(uninstallCmd)

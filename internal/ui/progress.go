@@ -3,13 +3,17 @@ package ui
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
 )
 
-// stdoutMu는 병렬 설치 시 터미널 출력이 섞이지 않도록 직렬화합니다.
-var stdoutMu sync.Mutex
+// AnimationEnabled는 비대화형 출력에서 spinner/progress를 끄기 위한 설정입니다.
+var AnimationEnabled = true
+
+// outputMu는 병렬 설치 시 터미널 출력이 섞이지 않도록 직렬화합니다.
+var outputMu sync.Mutex
 
 const renderInterval = 100 * time.Millisecond
 
@@ -35,6 +39,9 @@ func NewProgressBar(total int64, width int, prefix string) *ProgressBar {
 // Update는 진행 상황 데이터를 갱신하고, renderInterval마다 화면을 다시 그립니다.
 func (p *ProgressBar) Update(current int64) {
 	p.Current = current
+	if !AnimationEnabled {
+		return
+	}
 	if p.Total > 0 && p.Current > p.Total {
 		p.Current = p.Total
 	}
@@ -49,29 +56,35 @@ func (p *ProgressBar) Increment() {
 	p.Update(p.Current + 1)
 }
 
-// Finish는 100% 진행으로 설정하고 줄을 바꿉니다. stdoutMu를 보유한 채 렌더와 개행을 원자적으로 처리합니다.
+// Finish는 100% 진행으로 설정하고 줄을 바꿉니다. outputMu를 보유한 채 렌더와 개행을 원자적으로 처리합니다.
 func (p *ProgressBar) Finish() {
-	stdoutMu.Lock()
-	defer stdoutMu.Unlock()
+	if !AnimationEnabled {
+		return
+	}
+	outputMu.Lock()
+	defer outputMu.Unlock()
 	if p.Total > 0 {
 		p.Current = p.Total
 	}
 	p.render()
-	fmt.Println()
+	fmt.Fprintln(os.Stderr)
 }
 
-// Render는 stdoutMu를 잡고 현재 상태를 화면에 출력합니다.
+// Render는 outputMu를 잡고 현재 상태를 화면에 출력합니다.
 func (p *ProgressBar) Render() {
-	stdoutMu.Lock()
-	defer stdoutMu.Unlock()
+	if !AnimationEnabled {
+		return
+	}
+	outputMu.Lock()
+	defer outputMu.Unlock()
 	p.render()
 }
 
-// render는 mutex 없이 실제 출력을 수행합니다. 반드시 stdoutMu를 보유한 상태에서 호출하세요.
+// render는 mutex 없이 실제 출력을 수행합니다. 반드시 outputMu를 보유한 상태에서 호출하세요.
 func (p *ProgressBar) render() {
 	if p.Total <= 0 {
 		// 진행률을 모를 때의 출력 방식 (단순 바이트 단위 등)
-		fmt.Printf("\r\033[K%s %d bytes", Info(p.Prefix), p.Current)
+		fmt.Fprintf(os.Stderr, "\r\033[K%s %d bytes", Info(p.Prefix), p.Current)
 		return
 	}
 
@@ -84,7 +97,7 @@ func (p *ProgressBar) render() {
 
 	// \r: 커서를 줄 맨 앞으로 이동
 	// \033[K: 커서 위치부터 줄 끝까지 지움
-	fmt.Printf("\r\033[K%s  %s%s%s %3.0f%% %s",
+	fmt.Fprintf(os.Stderr, "\r\033[K%s  %s%s%s %3.0f%% %s",
 		Label(p.Prefix),
 		Highlight(completed),
 		Muted(empty),
@@ -122,6 +135,11 @@ func NewSpinner(prefix string) *Spinner {
 // Start는 고루틴을 통해 스피너를 출력합니다. 채널 데이터로 종료 흐름을 제어합니다.
 func (s *Spinner) Start() {
 	s.startOnce.Do(func() {
+		if !AnimationEnabled || !isTerminal(os.Stderr) {
+			close(s.startedChan)
+			close(s.doneChan)
+			return
+		}
 		select {
 		case <-s.StopChan:
 			close(s.startedChan)
@@ -142,9 +160,9 @@ func (s *Spinner) Start() {
 				default:
 				}
 
-				stdoutMu.Lock()
-				fmt.Printf("\r\033[K%s %s", Accent(spinnerFrames[s.CurrentIdx]), Muted(s.Prefix))
-				stdoutMu.Unlock()
+				outputMu.Lock()
+				fmt.Fprintf(os.Stderr, "\r\033[K%s %s", Accent(spinnerFrames[s.CurrentIdx]), Muted(s.Prefix))
+				outputMu.Unlock()
 				s.CurrentIdx = (s.CurrentIdx + 1) % len(spinnerFrames)
 
 				select {
@@ -167,10 +185,18 @@ func (s *Spinner) Stop() {
 		default:
 			return
 		}
-		stdoutMu.Lock()
-		fmt.Print("\r\033[K")
-		stdoutMu.Unlock()
+		outputMu.Lock()
+		fmt.Fprint(os.Stderr, "\r\033[K")
+		outputMu.Unlock()
 	})
+}
+
+func isTerminal(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // ProgressReader는 io.Reader를 감싸서 읽을 때마다 ProgressBar를 업데이트하는 래퍼입니다.

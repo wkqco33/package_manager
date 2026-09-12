@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/wkqco33/package_manager/internal/config"
@@ -144,5 +145,117 @@ func TestInfoCommandRequiresExactlyOnePackage(t *testing.T) {
 		if err := ExecuteArgs(args); err == nil {
 			t.Fatalf("expected info %v to reject invalid argument count", args)
 		}
+	}
+}
+
+func TestUninstallRequiresConfirmationBeforeRemoval(t *testing.T) {
+	confirmed := false
+	removed := false
+	command := newUninstallCommand(uninstallDependencies{
+		LoadConfig: func() (*config.Config, error) {
+			return &config.Config{InstallPath: t.TempDir()}, nil
+		},
+		Confirm: func() error {
+			confirmed = true
+			return errors.New("declined")
+		},
+		Remove: func(string, string) error {
+			removed = true
+			return nil
+		},
+	})
+
+	if err := command.Execute([]string{"owner/repo"}); err == nil {
+		t.Fatal("expected declined confirmation error")
+	}
+	if !confirmed {
+		t.Fatal("expected confirmation to be requested")
+	}
+	if removed {
+		t.Fatal("remove operation must not run after declined confirmation")
+	}
+}
+
+func TestCleanAllRequiresConfirmation(t *testing.T) {
+	oldAll, oldConfirm := cleanAll, confirmDestructiveAction
+	t.Cleanup(func() {
+		cleanAll = oldAll
+		confirmDestructiveAction = oldConfirm
+	})
+	confirmDestructiveAction = func(string) error { return errors.New("declined") }
+
+	command := newCleanCommand(cleanDependencies{
+		LoadConfig: func() (*config.Config, error) {
+			return &config.Config{InstallPath: t.TempDir()}, nil
+		},
+		GetPackagesDir: func() (string, error) { return t.TempDir(), nil },
+	})
+	cleanAll = true
+	if err := command.Execute(nil); err == nil {
+		t.Fatal("expected declined confirmation error")
+	}
+}
+
+func TestDestructiveConfirmationRequiresExplicitBypassWithoutInput(t *testing.T) {
+	oldNoInput := noInputMode
+	t.Cleanup(func() { noInputMode = oldNoInput })
+	noInputMode = true
+
+	if err := requireDestructiveConfirmation("clean --all", false); err == nil {
+		t.Fatal("expected non-interactive confirmation error")
+	}
+	if err := requireDestructiveConfirmation("clean --all", true); err != nil {
+		t.Fatalf("--yes/--force bypass should succeed: %v", err)
+	}
+}
+
+func TestSelfUpdateRequiresConfirmationWithoutInput(t *testing.T) {
+	if err := ExecuteArgs([]string{"--no-input", "self-update"}); err == nil {
+		t.Fatal("self-update must require explicit confirmation")
+	}
+}
+
+func TestConfigSetPasswordStdin(t *testing.T) {
+	cfg := &config.Config{}
+	var saved *config.Config
+	command := newConfigCommand(configDependencies{
+		LoadConfig:    func() (*config.Config, error) { return cfg, nil },
+		SaveConfig:    func(value *config.Config) error { saved = value; return nil },
+		SetValue:      config.SetValue,
+		PasswordStdin: strings.NewReader("token-from-stdin\n"),
+	})
+	if err := command.Execute([]string{"set", "auth_token", "--password-stdin"}); err != nil {
+		t.Fatalf("config set --password-stdin error = %v", err)
+	}
+	if saved == nil || saved.AuthToken != "token-from-stdin" {
+		t.Fatalf("saved token = %#v, want token-from-stdin", saved)
+	}
+}
+
+func TestConfigSetPasswordFile(t *testing.T) {
+	cfg := &config.Config{}
+	var saved *config.Config
+	command := newConfigCommand(configDependencies{
+		LoadConfig: func() (*config.Config, error) { return cfg, nil },
+		SaveConfig: func(value *config.Config) error { saved = value; return nil },
+		SetValue:   config.SetValue,
+		ReadFile: func(string) ([]byte, error) {
+			return []byte("token-from-file\n"), nil
+		},
+	})
+	if err := command.Execute([]string{"set", "auth_token", "--password-file", "token.txt"}); err != nil {
+		t.Fatalf("config set --password-file error = %v", err)
+	}
+	if saved == nil || saved.AuthToken != "token-from-file" {
+		t.Fatalf("saved token = %#v, want token-from-file", saved)
+	}
+}
+
+func TestExecuteArgsRejectsUnknownCommand(t *testing.T) {
+	if err := ExecuteArgs([]string{"does-not-exist"}); err == nil {
+		t.Fatal("unknown command must return a non-zero error")
+	}
+	if err := ExecuteArgs([]string{"config", "does-not-exist"}); err == nil {
+		t.Fatal("unknown subcommand must return a non-zero error")
 	}
 }

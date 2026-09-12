@@ -22,6 +22,9 @@ var selfUpdateCmd = &wcli.Command{
 	Short: "ppm 자신을 최신 버전으로 업데이트",
 	Long:  "GitHub Release에서 현재 운영체제에 맞는 ppm 바이너리를 내려받아 교체합니다.",
 	Run: func(ctx *wcli.Context) error {
+		if err := requireDestructiveConfirmation("self-update", selfUpdateYes || selfUpdateForce); err != nil {
+			return err
+		}
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			return err
@@ -56,4 +59,13 @@ var selfUpdateCmd = &wcli.Command{
 	},
 }
 
-func init() { rootCmd.AddCommand(selfUpdateCmd) }
+var (
+	selfUpdateYes   bool
+	selfUpdateForce bool
+)
+
+func init() {
+	rootCmd.AddCommand(selfUpdateCmd)
+	selfUpdateCmd.Flags().BoolVar(&selfUpdateYes, "yes", "y", false, "확인 없이 실행")
+	selfUpdateCmd.Flags().BoolVar(&selfUpdateForce, "force", "f", false, "확인 없이 강제 실행")
+}

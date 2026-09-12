@@ -52,6 +52,21 @@ func GetPaths() (*Paths, error) {
 		cacheDir = filepath.Join(home, ".cache", "ppm")
 	}
 
+	// 명시적 PPM 경로 재정의가 항상 OS 기본값보다 우선합니다.
+	if value := os.Getenv("PPM_CONFIG_DIR"); value != "" {
+		configDir = value
+	} else if value := os.Getenv("XDG_CONFIG_HOME"); value != "" && runtime.GOOS != "windows" {
+		configDir = filepath.Join(value, "ppm")
+	}
+	if value := os.Getenv("PPM_INSTALL_DIR"); value != "" {
+		binDir = value
+	}
+	if value := os.Getenv("PPM_CACHE_DIR"); value != "" {
+		cacheDir = value
+	} else if value := os.Getenv("XDG_CACHE_HOME"); value != "" && runtime.GOOS != "windows" {
+		cacheDir = filepath.Join(value, "ppm")
+	}
+
 	return &Paths{
 		ConfigDir:  configDir,
 		BinDir:     binDir,

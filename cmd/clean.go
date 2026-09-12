@@ -17,7 +17,9 @@ import (
 )
 
 var (
-	cleanAll bool
+	cleanAll   bool
+	cleanYes   bool
+	cleanForce bool
 )
 
 type cleanDependencies struct {
@@ -36,7 +38,7 @@ func defaultCleanDependencies() cleanDependencies {
 var cleanCmd = newCleanCommand(defaultCleanDependencies())
 
 func newCleanCommand(deps cleanDependencies) *wcli.Command {
-	return &wcli.Command{
+	command := &wcli.Command{
 		Use:   "clean",
 		Short: "패키지 캐시 및 사용하지 않는 버전 삭제",
 		Long:  `설치된 패키지 중 현재 사용하지 않는 구버전이나 캐시 파일들을 정리합니다.`,
@@ -56,11 +58,18 @@ func newCleanCommand(deps cleanDependencies) *wcli.Command {
 			}
 
 			if cleanAll {
+				if err := requireDestructiveConfirmation("clean --all", cleanYes || cleanForce); err != nil {
+					return err
+				}
 				return performCleanAll(packagesDir, cfg.InstallPath)
 			}
 			return performCleanUnused(packagesDir, cfg.InstallPath)
 		},
 	}
+	command.Flags().BoolVar(&cleanAll, "all", "a", false, "모든 설치된 패키지 및 링크 삭제")
+	command.Flags().BoolVar(&cleanYes, "yes", "y", false, "확인 없이 실행")
+	command.Flags().BoolVar(&cleanForce, "force", "f", false, "확인 없이 강제 실행")
+	return command
 }
 
 func performCleanAll(packagesDir, installPath string) error {
@@ -221,5 +230,4 @@ func hashFile(path string) ([sha256.Size]byte, error) {
 
 func init() {
 	rootCmd.AddCommand(cleanCmd)
-	cleanCmd.Flags().BoolVar(&cleanAll, "all", "a", false, "모든 설치된 패키지 및 링크 삭제")
 }
