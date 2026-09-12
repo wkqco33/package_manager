@@ -48,6 +48,15 @@ func TestPackageInstallerCreatesArchiverAndInstallsInOrder(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", t.TempDir())
 	t.Setenv("APPDATA", "")
+	for _, name := range []string{
+		"PPM_CONFIG_DIR",
+		"PPM_INSTALL_DIR",
+		"PPM_CACHE_DIR",
+		"XDG_CONFIG_HOME",
+		"XDG_CACHE_HOME",
+	} {
+		t.Setenv(name, "")
+	}
 
 	var names []string
 	archivers := make(map[string]*installerArchiver)
