@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	"sync"
+
 	"github.com/wkqco33/wcli"
 
 	"github.com/wkqco33/package_manager/internal/app"
@@ -12,7 +14,6 @@ import (
 	"github.com/wkqco33/package_manager/internal/pkg"
 	"github.com/wkqco33/package_manager/internal/registry"
 	"github.com/wkqco33/package_manager/internal/ui"
-	"github.com/wkqco33/package_manager/internal/version"
 )
 
 type updateDependencies struct {
@@ -63,23 +64,23 @@ func newUpdateCommand(deps updateDependencies) *wcli.Command {
 				return fmt.Errorf("update command requires a registry fetcher")
 			}
 			metadataFetcher := withUpdateProgress(fetcher)
-			if updateCheck {
-				for _, installedPackage := range installed {
-					latest, fetchErr := metadataFetcher.GetMetadata(installedPackage.Name)
-					if fetchErr != nil {
-						return fetchErr
-					}
-					if version.Compare(installedPackage.Version, latest.Version) < 0 {
-						logger.Info("%s: %s -> %s", installedPackage.Name, installedPackage.Version, latest.Version)
-					}
-				}
-				return nil
-			}
 			updater := app.PackageUpdater{
 				Fetcher:         fetcher,
 				MetadataFetcher: metadataFetcher,
 				InstallPath:     cfg.InstallPath,
 				NewArchiver:     deps.NewArchiver,
+			}
+			if updateCheck {
+				results, checkErr := updater.Check(installed)
+				if checkErr != nil {
+					return checkErr
+				}
+				for _, res := range results {
+					if res.HasUpdate {
+						logger.Info("%s: %s -> %s", res.Package.Name, res.Package.Version, res.Latest.Version)
+					}
+				}
+				return nil
 			}
 			result, err := updater.Update(installed, ctx.Args)
 			if err != nil {
@@ -101,17 +102,35 @@ func newUpdateCommand(deps updateDependencies) *wcli.Command {
 
 type updateMetadataFetcher struct {
 	fetcher pkg.MetadataFetcher
+	mu      sync.Mutex
+	spinner *ui.Spinner
+	active  int
 }
 
-func (f updateMetadataFetcher) GetMetadata(name string) (*pkg.Package, error) {
-	spinner := ui.NewSpinner("Fetching metadata for " + name + "...")
-	spinner.Start()
-	defer spinner.Stop()
+func (f *updateMetadataFetcher) GetMetadata(name string) (*pkg.Package, error) {
+	f.mu.Lock()
+	if f.active == 0 {
+		f.spinner = ui.NewSpinner("Checking package metadata...")
+		f.spinner.Start()
+	}
+	f.active++
+	f.mu.Unlock()
+
+	defer func() {
+		f.mu.Lock()
+		f.active--
+		if f.active == 0 && f.spinner != nil {
+			f.spinner.Stop()
+			f.spinner = nil
+		}
+		f.mu.Unlock()
+	}()
+
 	return f.fetcher.GetMetadata(name)
 }
 
 func withUpdateProgress(fetcher pkg.MetadataFetcher) pkg.MetadataFetcher {
-	return updateMetadataFetcher{fetcher: fetcher}
+	return &updateMetadataFetcher{fetcher: fetcher}
 }
 
 func init() {

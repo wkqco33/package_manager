@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -9,6 +10,21 @@ import (
 	"github.com/wkqco33/package_manager/internal/pkg"
 	"github.com/wkqco33/package_manager/internal/platform"
 )
+
+type mockRegistryFetcher struct {
+	onGetMetadata func(string) (*pkg.Package, error)
+}
+
+func (m mockRegistryFetcher) GetMetadata(name string) (*pkg.Package, error) {
+	if m.onGetMetadata != nil {
+		return m.onGetMetadata(name)
+	}
+	return nil, nil
+}
+
+func (mockRegistryFetcher) DownloadSource(*pkg.Package) (io.ReadCloser, int64, error) {
+	return io.NopCloser(strings.NewReader("")), 0, nil
+}
 
 func TestInstallCommandRejectsMissingPackage(t *testing.T) {
 	err := ExecuteArgs([]string{"install"})
@@ -35,6 +51,33 @@ func TestUpdateCommandInjectsConfigLoader(t *testing.T) {
 	})
 	if err := command.Execute(nil); !errors.Is(err, wantErr) {
 		t.Fatalf("error = %v, want injected config error", err)
+	}
+}
+
+func TestUpdateCommandCheck(t *testing.T) {
+	oldCheck := updateCheck
+	t.Cleanup(func() { updateCheck = oldCheck })
+	updateCheck = true
+
+	command := newUpdateCommand(updateDependencies{
+		LoadConfig:     func() (*config.Config, error) { return &config.Config{}, nil },
+		GetPackagesDir: func() (string, error) { return t.TempDir(), nil },
+		ListInstalled: func(string) ([]*pkg.Package, error) {
+			return []*pkg.Package{
+				{Name: "owner/repo", Version: "v1.0.0"},
+			}, nil
+		},
+		NewFetcher: func(*config.Config) pkg.RegistryFetcher {
+			return mockRegistryFetcher{
+				onGetMetadata: func(name string) (*pkg.Package, error) {
+					return &pkg.Package{Name: name, Version: "v2.0.0"}, nil
+				},
+			}
+		},
+	})
+
+	if err := command.Execute(nil); err != nil {
+		t.Fatalf("update --check error = %v", err)
 	}
 }
 
