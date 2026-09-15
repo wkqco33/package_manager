@@ -2,19 +2,22 @@
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-09-15
+
 ### 추가 사항 (Features)
 
-- **CLI 안전성 및 자동화 개선**
-  - `uninstall`, `clean --all`, `self-update`에 TTY 확인과 `--yes`/`--force` 우회 옵션을 추가했습니다.
-  - root 전역 `--version`/`-v`, `--quiet`/`-q`, `--no-color`, `--no-input` 옵션을 추가하고,
-    알 수 없는 명령이 성공으로 처리되지 않도록 검증합니다.
-  - `auth_token`은 `--password-stdin` 또는 `--password-file`로 안전하게 설정할 수 있습니다.
-  - `PPM_CONFIG_DIR`, `PPM_CACHE_DIR`, `PPM_INSTALL_DIR`, `XDG_CONFIG_HOME`,
-    `XDG_CACHE_HOME` 경로 재정의를 지원합니다.
-- **기본 앱 패키지 소개 커맨드 추가 ([apps.go](cmd/apps.go), [apps.go](internal/apps/apps.go))**
+- **기본 앱 자동 설치 및 고루틴 동시성 지원 (`ppm apps --install`) ([apps.go](cmd/apps.go), [apps.go](internal/app/apps.go))**
+  - `--install` (`-i`) 플래그로 미설치된 기본 앱들을 자동 감지하여 한 번에 설치할 수 있습니다.
+  - Bounded Concurrency(세마포어 채널) 워커 풀을 적용해 메타데이터 조회 및 아카이브 다운로드를 병렬 처리하여 설치 시간을 극적으로 단축했습니다.
+  - `--all` (`-a`): 이미 설치된 앱을 포함하여 모든 기본 앱 설치/재설치 지원.
+  - `--concurrency` (`-c`): 동시 설치 고루틴 수 지정 (기본값: 4).
+  - `--dry-run`: 실제 설치 없이 설치 계획 확인 지원.
+  - `ppm apps -i [package...]`: 원하는 기본 앱만 지정하여 설치 지원.
+  - 기본 앱 목록에 `ai-monitoring`, `package_manager`, `pc_spec_checker` 추가 (총 14개).
+
+- **기본 앱 패키지 소개 커맨드 ([apps.go](cmd/apps.go), [apps.go](internal/apps/apps.go))**
   - `ppm apps` 커맨드로 ppm으로 설치 가능한 기본 앱 패키지 목록을 소개합니다.
   - 각 앱의 설명·홈페이지와 함께 설치 상태를 표시하며, `--json` 플래그로 자동화에 활용할 수 있습니다.
-  - 기본 앱 목록은 현재 PC에 실제 설치되어 ppm으로 설치 가능함이 확인된 앱들로 구성됩니다.
 
 ## [1.1.0] - 2026-07-16
 

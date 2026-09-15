@@ -36,11 +36,48 @@ func TestDefaultAppsUseOwnerRepoFormat(t *testing.T) {
 	}
 }
 
-func splitOwnerRepo(name string) []string {
-	for i := 0; i < len(name); i++ {
-		if name[i] == '/' {
-			return []string{name[:i], name[i+1:]}
-		}
+func TestFilterUninstalled(t *testing.T) {
+	sampleApps := []DefaultApp{
+		{Name: "user/app1", BinName: "app1"},
+		{Name: "user/app2", BinName: "app2"},
+		{Name: "user/app3", BinName: "app3"},
 	}
-	return nil
+
+	installed := []string{"user/app1", "app2"} // full name or base name
+	uninstalled := FilterUninstalled(sampleApps, installed)
+
+	if len(uninstalled) != 1 || uninstalled[0].Name != "user/app3" {
+		t.Fatalf("expected [user/app3], got %v", uninstalled)
+	}
+
+	// All installed
+	allInstalled := FilterUninstalled(sampleApps, []string{"user/app1", "user/app2", "user/app3"})
+	if len(allInstalled) != 0 {
+		t.Fatalf("expected empty slice, got %v", allInstalled)
+	}
+}
+
+func TestFilterByName(t *testing.T) {
+	sampleApps := []DefaultApp{
+		{Name: "user/app1", BinName: "app1"},
+		{Name: "user/app2", BinName: "app2"},
+	}
+
+	// Match by full name
+	matched, err := FilterByName(sampleApps, []string{"user/app1"})
+	if err != nil || len(matched) != 1 || matched[0].Name != "user/app1" {
+		t.Fatalf("unexpected match for full name: %v, %v", matched, err)
+	}
+
+	// Match by short name or bin name
+	matched, err = FilterByName(sampleApps, []string{"app2"})
+	if err != nil || len(matched) != 1 || matched[0].Name != "user/app2" {
+		t.Fatalf("unexpected match for short/bin name: %v, %v", matched, err)
+	}
+
+	// Unknown name returns error
+	_, err = FilterByName(sampleApps, []string{"nonexistent"})
+	if err == nil {
+		t.Fatalf("expected error for nonexistent app, got nil")
+	}
 }
