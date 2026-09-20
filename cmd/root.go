@@ -131,7 +131,7 @@ func validateCommandPath(args []string) error {
 		return nil
 	}
 	topLevel := map[string]bool{
-		"apps": true, "cache": true, "changelog": true, "clean": true, "completion": true,
+		"apps": true, "auth": true, "cache": true, "changelog": true, "clean": true, "completion": true,
 		"config": true, "doctor": true, "info": true, "init": true, "install": true,
 		"list": true, "lock": true, "manifest": true, "outdated": true, "package": true,
 		"search": true, "self-update": true, "uninstall": true, "update": true,
@@ -141,6 +141,7 @@ func validateCommandPath(args []string) error {
 		return fmt.Errorf("unknown command %q", tokens[0])
 	}
 	subcommands := map[string]map[string]bool{
+		"auth":     {"login": true, "status": true, "logout": true},
 		"cache":    {"list": true, "clean": true},
 		"config":   {"show": true, "set": true},
 		"manifest": {"validate": true},

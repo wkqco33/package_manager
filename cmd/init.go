@@ -38,7 +38,7 @@ func newInitCommand(deps initDependencies) *wcli.Command {
 				return err
 			}
 			logger.Success("Configuration file created successfully at %s/config.yaml", paths.ConfigDir)
-			logger.Info("Please edit the file to add your AuthToken.")
+			logger.Info("GitHub 인증은 'ppm auth login'으로 설정할 수 있습니다.")
 			return nil
 		},
 	}

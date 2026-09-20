@@ -28,9 +28,9 @@ var doctorCmd = &wcli.Command{
 		fmt.Println("ppm 진단 결과")
 		fmt.Printf("  OK   registry: %s\n", cfg.RegistryURL)
 		if cfg.AuthToken == "" {
-			fmt.Println("  WARN auth_token이 설정되지 않았습니다")
+			fmt.Println("  WARN GitHub 인증 정보가 설정되지 않았습니다")
 		} else {
-			fmt.Println("  OK   auth_token이 설정되어 있습니다")
+			fmt.Println("  OK   GitHub 인증 정보가 설정되어 있습니다")
 		}
 		if err := checkDirectory("install path", cfg.InstallPath); err != nil {
 			fmt.Printf("  FAIL %v\n", err)

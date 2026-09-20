@@ -196,6 +196,12 @@ ppm package validate     # ppm.json 매니페스트 유효성 검증
 # 현재 설정 확인 (auth_token은 보안을 위해 마스킹되어 출력됩니다)
 ppm config show
 
+# 권장: GitHub 로그인 (gh가 있으면 기존 gh 인증을 재사용하고,
+# 없거나 로그인되지 않았으면 OAuth Device Flow를 사용합니다)
+ppm auth login
+ppm auth status
+ppm auth logout
+
 # 설정 변경
 ppm config set registry_url https://api.github.com
 ppm config set auth_token <your-personal-access-token> # 호환성 유지, 셸 기록 노출 경고
@@ -208,7 +214,9 @@ ppm config set install_path ~/.local/bin
 
 - `registry_url`: 기본 레지스트리 API URL (기본값: `https://api.github.com`).
 - `registries`: 기본 레지스트리 실패 시 순서대로 시도할 mirror API URL 목록입니다. 마지막에는 GitHub 공개 API가 자동으로 시도됩니다.
-- `auth_token`: GitHub Personal Access Token (PAT)
+- `auth_token`: 기존 호환성을 위한 GitHub Personal Access Token (PAT)
+- GitHub 인증은 `ppm auth login`을 권장합니다. `gh`가 설치되어 로그인되어 있으면 `gh auth token`을 재사용하고, 그렇지 않으면 GitHub OAuth Device Flow로 로그인합니다.
+- Device Flow 토큰은 운영체제 credential store에 저장하며, credential store를 사용할 수 없는 환경에서는 권한 `0600`의 설정 디렉터리 `credentials` 파일을 fallback으로 사용합니다.
 - `require_checksum`: Release의 `.sha256` 또는 `.sha256sum` asset을 필수로 검증합니다. 기본값은 `false`입니다.
 - `install_path`: 바이너리가 설치될 경로 (기본값: `~/.local/bin` 또는 Windows 사용자 홈 `.local\bin`)
 

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/auth"
 	"github.com/wkqco33/package_manager/internal/platform"
 
 	"gopkg.in/yaml.v3"
@@ -109,6 +110,8 @@ func LoadConfig() (*Config, error) {
 	if registryURL := os.Getenv("PPM_REGISTRY_URL"); registryURL != "" {
 		cfg.RegistryURL = registryURL
 	}
+	// 명시적 설정과 환경 변수가 없으면 OS credential store 또는 gh 인증을 사용합니다.
+	cfg.AuthToken = auth.ResolveToken(cfg.AuthToken)
 
 	// InstallPath가 비어 있으면 기본값 설정
 	if cfg.InstallPath == "" {
