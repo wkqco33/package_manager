@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-09-21
+
 ### 개선 사항 (Refactoring)
 
 - **소스 tarball 폴백 거부 메시지 구체화 ([package.go](internal/pkg/package.go), [github.go](internal/registry/github.go))**
@@ -14,6 +16,13 @@
   - `ppm auth logout`이 ppm이 저장한 토큰만 삭제된다는 점과, 남아 있는 `gh`·환경 변수 토큰의 해제 방법(`gh auth logout --hostname github.com`, `unset`)을 안내합니다.
   - `ppm auth login`이 `gh` 토큰을 재사용할 때 ppm에 별도 토큰을 저장하지 않음을 명시합니다.
   - `config.ReadConfigToken`을 추가해 `config.yaml`의 원시 `auth_token`과 해석된 토큰(`LoadConfig`)을 구분합니다.
+
+### 테스트 (Tests)
+
+- **테스트 경로 환경 격리 보강 ([package_test.go](internal/pkg/package_test.go), [install_integration_test.go](internal/pkg/install_integration_test.go), [apps_test.go](cmd/apps_test.go), [apps_test.go](internal/app/apps_test.go), [update_test.go](internal/app/update_test.go), [install_test.go](internal/app/install_test.go))**
+  - `platform.GetPaths()`는 `HOME`보다 `PPM_CONFIG_DIR`·`XDG_CONFIG_HOME` 같은 명시적 재정의를 우선하므로, 테스트 헬퍼가 이 변수들도 함께 비우도록 수정했습니다.
+  - 그렇지 않으면 해당 변수가 설정된 CI 러너에서 모든 테스트가 러너의 실제 홈·캐시 디렉터리를 공유해, 이전 실행의 잔여물 때문에 실행 순서에 따라 실패했습니다.
+  - 패키지 디렉터리와 캐시 디렉터리가 격리된 임시 홈 아래에 있는지 검증하는 테스트를 추가했습니다.
 
 ## [0.2.11] - 2026-09-15
 
