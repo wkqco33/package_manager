@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### 개선 사항 (Refactoring)
+
+- **소스 tarball 폴백 거부 메시지 구체화 ([package.go](internal/pkg/package.go), [github.go](internal/registry/github.go))**
+  - 릴리스에 현재 플랫폼용 바이너리 asset이 없어 설치가 중단될 때, 감지된 플랫폼(`darwin/arm64` 등)과 릴리스에 존재하는 설치 가능한 asset 목록을 함께 안내합니다.
+  - 체크섬·서명 사이드카는 목록에서 제외하고, 10개를 넘으면 `외 N개`로 요약합니다.
+  - 진단 정보(`AssetDiagnostics`)는 `ppm-meta.json`과 `ppm.lock`에 직렬화하지 않습니다.
+
+- **인증 소스 가시성 강화 (`ppm auth status` / `ppm auth logout`) ([auth.go](cmd/auth.go), [auth.go](internal/auth/auth.go), [config.go](internal/config/config.go))**
+  - `ppm auth status`가 해석 우선순위대로 모든 인증 소스(`PPM_AUTH_TOKEN`, `GITHUB_TOKEN`, `config.yaml`, credential store, `gh`)의 감지 여부를 표시합니다.
+  - `ppm auth logout`이 ppm이 저장한 토큰만 삭제된다는 점과, 남아 있는 `gh`·환경 변수 토큰의 해제 방법(`gh auth logout --hostname github.com`, `unset`)을 안내합니다.
+  - `ppm auth login`이 `gh` 토큰을 재사용할 때 ppm에 별도 토큰을 저장하지 않음을 명시합니다.
+  - `config.ReadConfigToken`을 추가해 `config.yaml`의 원시 `auth_token`과 해석된 토큰(`LoadConfig`)을 구분합니다.
+
 ## [0.2.11] - 2026-09-15
 
 ### 추가 사항 (Features)

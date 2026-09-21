@@ -165,6 +165,7 @@ func tokenFromGitHubCLI() (string, error) {
 func Login(ctx context.Context, out io.Writer) error {
 	if _, err := tokenFromGitHubCLI(); err == nil {
 		fmt.Fprintln(out, "기존 GitHub CLI 인증을 사용합니다.")
+		fmt.Fprintln(out, "ppm은 별도 토큰을 저장하지 않으므로, 이후 명령은 계속 gh 토큰을 사용합니다.")
 		return nil
 	}
 	return deviceLogin(ctx, out)
@@ -279,18 +280,42 @@ func Logout() error {
 	return err
 }
 
-func Status() (string, error) {
-	if os.Getenv("PPM_AUTH_TOKEN") != "" {
-		return "PPM_AUTH_TOKEN 환경 변수", nil
+// Source는 인증 정보 해석 후보와 감지 여부입니다.
+type Source struct {
+	// Name은 사용자에게 보여줄 소스 이름입니다.
+	Name string
+	// Detected는 해당 소스에서 토큰을 가져올 수 있는지 여부입니다.
+	Detected bool
+}
+
+// Sources는 ResolveToken과 동일한 우선순위로 인증 소스 후보를 반환합니다.
+// 여러 소스가 동시에 감지될 수 있으며, 실제로 사용되는 토큰은 첫 번째
+// Detected 소스입니다. auth logout 이후에도 GitHub CLI나 환경 변수 토큰이
+// 계속 사용되는 이유를 사용자에게 설명하기 위한 정보입니다.
+func Sources(configToken string) []Source {
+	sources := []Source{
+		{Name: "PPM_AUTH_TOKEN 환경 변수", Detected: os.Getenv("PPM_AUTH_TOKEN") != ""},
+		{Name: "GITHUB_TOKEN 환경 변수", Detected: os.Getenv("GITHUB_TOKEN") != ""},
+		{Name: "config.yaml auth_token", Detected: configToken != ""},
 	}
-	if os.Getenv("GITHUB_TOKEN") != "" {
-		return "GITHUB_TOKEN 환경 변수", nil
-	}
+
+	storeDetected := false
 	if token, err := store.Get(keyringService, keyringUser); err == nil && token != "" {
-		return "ppm OS credential store", nil
+		storeDetected = true
 	}
-	if _, err := tokenFromGitHubCLI(); err == nil {
-		return "GitHub CLI (gh)", nil
+	sources = append(sources, Source{Name: "ppm credential store", Detected: storeDetected})
+
+	_, cliErr := tokenFromGitHubCLI()
+	sources = append(sources, Source{Name: "GitHub CLI (gh)", Detected: cliErr == nil})
+	return sources
+}
+
+// Status는 실제로 사용될 인증 소스의 이름을 반환합니다.
+func Status(configToken string) (string, error) {
+	for _, source := range Sources(configToken) {
+		if source.Detected {
+			return source.Name, nil
+		}
 	}
 	return "", ErrNotAuthenticated
 }

@@ -79,13 +79,23 @@ func SetValue(cfg *Config, key, value string) error {
 	return nil
 }
 
-// LoadConfig는 config.yaml을 읽습니다.
-func LoadConfig() (*Config, error) {
+// ReadConfigToken은 config.yaml에 명시된 auth_token 원시 값을 반환합니다.
+// LoadConfig와 달리 환경 변수·credential store·gh CLI로 토큰을 해석하지
+// 않으므로, ppm auth status처럼 소스별 감지 여부를 확인할 때 사용합니다.
+func ReadConfigToken() (string, error) {
 	paths, err := platform.GetPaths()
 	if err != nil {
-		return nil, apperr.Wrap(apperr.CodeFileSystem, err, "could not get platform paths")
+		return "", apperr.Wrap(apperr.CodeFileSystem, err, "could not get platform paths")
 	}
+	cfg, err := readRawConfig(paths)
+	if err != nil {
+		return "", err
+	}
+	return cfg.AuthToken, nil
+}
 
+// readRawConfig는 config.yaml만 읽고 환경 변수나 인증 소스를 반영하지 않습니다.
+func readRawConfig(paths *platform.Paths) (*Config, error) {
 	configPath := filepath.Join(paths.ConfigDir, "config.yaml")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -98,6 +108,20 @@ func LoadConfig() (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, apperr.Wrap(apperr.CodeConfig, err, "failed to parse config.yaml")
+	}
+	return &cfg, nil
+}
+
+// LoadConfig는 config.yaml을 읽습니다.
+func LoadConfig() (*Config, error) {
+	paths, err := platform.GetPaths()
+	if err != nil {
+		return nil, apperr.Wrap(apperr.CodeFileSystem, err, "could not get platform paths")
+	}
+
+	cfg, err := readRawConfig(paths)
+	if err != nil {
+		return nil, err
 	}
 
 	// 환경 변수는 CI/CD에서 안전하게 주입할 수 있도록 설정 파일보다 우선합니다.
@@ -118,7 +142,7 @@ func LoadConfig() (*Config, error) {
 		cfg.InstallPath = paths.BinDir
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 // EnsureConfigDir는 설정 디렉터리가 없으면 생성합니다.

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -123,5 +124,50 @@ func TestGenerateAndLoadConfig(t *testing.T) {
 	expectedInstallPath := filepath.Join(tmpHome, ".local", "bin")
 	if cfg.InstallPath != expectedInstallPath {
 		t.Errorf("Expected install_path to be %s, got %s", expectedInstallPath, cfg.InstallPath)
+	}
+}
+
+// ReadConfigToken은 config.yaml의 원시 auth_token만 반환해야 합니다.
+// LoadConfig는 환경 변수와 credential store·gh CLI까지 반영하므로,
+// ppm auth status가 소스별 감지 여부를 구분할 수 없습니다.
+func TestReadConfigTokenIgnoresResolvedSources(t *testing.T) {
+	setupTempHome(t)
+
+	cfg, err := DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() error = %v", err)
+	}
+	if err := SetValue(cfg, "auth_token", "config-token"); err != nil {
+		t.Fatalf("SetValue() error = %v", err)
+	}
+	if err := SaveConfig(cfg); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+	t.Setenv("PPM_AUTH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "environment-token")
+
+	token, err := ReadConfigToken()
+	if err != nil {
+		t.Fatalf("ReadConfigToken() error = %v", err)
+	}
+	if token != "config-token" {
+		t.Errorf("ReadConfigToken() = %q, want config-token", token)
+	}
+
+	// LoadConfig는 환경 변수를 우선하므로 해석된 값이 달라집니다.
+	loaded, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if loaded.AuthToken != "environment-token" {
+		t.Errorf("LoadConfig().AuthToken = %q, want environment-token", loaded.AuthToken)
+	}
+}
+
+func TestReadConfigTokenWithoutConfigFile(t *testing.T) {
+	setupTempHome(t)
+
+	if _, err := ReadConfigToken(); !errors.Is(err, ErrConfigNotFound) {
+		t.Fatalf("ReadConfigToken() error = %v, want ErrConfigNotFound", err)
 	}
 }

@@ -112,6 +112,10 @@ ppm install --from-source owner/repo
 
 `--from-source`는 다운로드한 소스에서 로컬 `go build`를 실행하므로 신뢰할 수 있는 저장소에만 사용해야 합니다.
 
+릴리스에 현재 플랫폼용 바이너리 asset이 없으면 설치는 `ARCHIVE_ERROR`로 중단되며, 감지된 플랫폼과 릴리스에
+존재하는 asset 목록을 함께 안내합니다. 이는 인증 문제가 아니므로 asset이 추가된 릴리스를 기다리거나
+신뢰할 수 있는 저장소에 한해 `--from-source`를 사용하세요.
+
 ```bash
 ppm install owner/repo1 owner/repo2
 ```
@@ -219,6 +223,32 @@ ppm config set install_path ~/.local/bin
 - Device Flow 토큰은 운영체제 credential store에 저장하며, credential store를 사용할 수 없는 환경에서는 권한 `0600`의 설정 디렉터리 `credentials` 파일을 fallback으로 사용합니다.
 - `require_checksum`: Release의 `.sha256` 또는 `.sha256sum` asset을 필수로 검증합니다. 기본값은 `false`입니다.
 - `install_path`: 바이너리가 설치될 경로 (기본값: `~/.local/bin` 또는 Windows 사용자 홈 `.local\bin`)
+
+### 인증 소스 우선순위와 `ppm auth logout`
+
+`ppm`은 다음 순서로 토큰을 찾으며, **첫 번째로 감지된 소스만** 사용합니다.
+
+1. `PPM_AUTH_TOKEN` 환경 변수
+2. `GITHUB_TOKEN` 환경 변수
+3. `config.yaml`의 `auth_token`
+4. `ppm` OS credential store (`ppm auth login`의 Device Flow 토큰)
+5. GitHub CLI (`gh auth token`)
+
+`ppm auth status`는 현재 사용 중인 소스와 함께 각 후보 소스의 감지 여부를 모두 보여줍니다.
+
+```
+GitHub 로그인 상태: GitHub CLI (gh)
+인증 소스 확인 (우선순위 순, 첫 번째 감지된 소스를 사용):
+  - PPM_AUTH_TOKEN 환경 변수: 미설정
+  - GITHUB_TOKEN 환경 변수: 미설정
+  - config.yaml auth_token: 미설정
+  - ppm credential store: 미설정
+  - GitHub CLI (gh): 감지됨
+```
+
+`ppm auth logout`은 **`ppm`이 저장한 정보만** 삭제합니다. 환경 변수 토큰과 `gh` 인증은 그대로 남으므로,
+해당 소스가 감지되면 명령은 계속 그 토큰을 사용합니다. 완전히 로그아웃하려면 함께 안내되는
+`gh auth logout --hostname github.com` 또는 `unset`을 실행하세요.
 
 설정 파일에는 GitHub Personal Access Token이 저장되므로 파일 권한을 다른 사용자에게 공개하지 마세요. `ppm config show`는 토큰을 마스킹해서 출력합니다.
 
