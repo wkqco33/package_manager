@@ -16,19 +16,17 @@ import (
 )
 
 // setupTempHome은 모든 OS에서 ppm 표준 경로가 임시 디렉터리를 가리키도록 환경변수를 설정합니다.
-// os.UserHomeDir()는 Unix에서 HOME, Windows에서 USERPROFILE을 사용하므로 둘 다 설정하고,
-// APPDATA는 비워서 platform.GetPaths()가 home/AppData/Roaming 으로 파생되게 합니다.
+// os.UserHomeDir()는 Unix에서 HOME, Windows에서 USERPROFILE을 사용하므로 둘 다 설정합니다.
 //
-// 또한 platform.GetPaths()는 HOME보다 PPM_CONFIG_DIR·XDG_CONFIG_HOME 같은 명시적
-// 재정의를 우선하므로 함께 비워야 합니다. 그렇지 않으면 CI 러너(예: XDG_CONFIG_HOME이
-// 설정된 환경)에서 모든 테스트가 러너의 실제 홈 디렉터리를 공유해 실행 순서에 따라
-// 서로 간섭합니다.
+// 또한 platform.GetPaths()는 HOME보다 APPDATA·LOCALAPPDATA·PPM_CONFIG_DIR·
+// XDG_CONFIG_HOME 같은 명시적 경로를 우선하므로 testPathEnvVars로 모두 비워야 합니다.
+// 그렇지 않으면 CI 러너에서 모든 테스트가 러너의 실제 홈·캐시 디렉터리를 공유해
+// 실행 순서에 따라 서로 간섭합니다.
 func setupTempHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)        // Unix
 	t.Setenv("USERPROFILE", home) // Windows (os.UserHomeDir)
-	t.Setenv("APPDATA", "")       // GetPaths가 home/AppData/Roaming 으로 파생
 	for _, name := range testPathEnvVars {
 		t.Setenv(name, "")
 	}
@@ -36,7 +34,10 @@ func setupTempHome(t *testing.T) string {
 }
 
 // testPathEnvVars는 platform.GetPaths()가 HOME보다 우선하는 경로 재정의 환경 변수입니다.
+// LOCALAPPDATA는 APPDATA와 함께 비워야 Windows에서 캐시 디렉터리가 임시 홈을 벗어나지 않습니다.
 var testPathEnvVars = []string{
+	"APPDATA",
+	"LOCALAPPDATA",
 	"PPM_CONFIG_DIR",
 	"PPM_INSTALL_DIR",
 	"PPM_CACHE_DIR",
