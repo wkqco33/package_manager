@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -230,10 +231,12 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 
 	// 현재 플랫폼에 맞는 최적 에셋 탐색
 	bestAsset := g.findBestAsset(rel.Assets)
+	diagnosticAssets := rel.Assets
 	if bestAsset == nil && len(rel.Assets) == 0 {
 		// 일부 GitHub API 응답/미러는 release assets를 생략합니다. 이때
 		// 소스 tarball을 선택하기 전에 공개 릴리스 페이지를 재확인합니다.
 		if webRel, webErr := g.fetchLatestReleaseFromWeb(pkgName, baseURL+"/repos/"+pkgName+"/releases/latest"); webErr == nil {
+			diagnosticAssets = webRel.Assets
 			bestAsset = g.findBestAsset(webRel.Assets)
 		}
 	}
@@ -253,6 +256,9 @@ func (g *GitHubRegistry) GetMetadata(pkgName string) (*pkg.Package, error) {
 	} else if rel.TarballUrl != "" {
 		p.Source = rel.TarballUrl
 		p.SourceFallback = true
+		// 설치 단계에서 소스 폴백이 거부될 때 "왜"를 설명할 수 있도록
+		// 감지된 플랫폼과 릴리스 에셋 목록을 함께 남깁니다.
+		p.AssetDiagnostics = newAssetDiagnostics(diagnosticAssets)
 	} else {
 		return nil, apperr.New(apperr.CodeRegistry, "현재 플랫폼(%s/%s)에 맞는 바이너리 에셋이나 소스 아카이브를 찾을 수 없습니다.", runtime.GOOS, runtime.GOARCH)
 	}
@@ -293,6 +299,44 @@ func (g *GitHubRegistry) resolveReleaseMetadata(pkgName string) (string, ghRelea
 	}
 
 	return "", ghRelease{}, apperr.New(apperr.CodeRegistry, "repository %s was not found. Check the owner/repo spelling, auth_token, and registry_url.", pkgName)
+}
+
+// assetSidecarSuffixes는 바이너리가 아니라 체크섬·서명만 담는 사이드카 에셋 접미사입니다.
+var assetSidecarSuffixes = []string{".sha256", ".sha256sum", ".sig", ".asc"}
+
+// installableAssetNames는 진단 메시지에 나열할 설치 가능한 에셋 이름을
+// 정렬된 형태로 반환합니다. 체크섬·서명 사이드카는 설치 대상이 아니므로 제외합니다.
+func installableAssetNames(assets []ghAsset) []string {
+	names := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		name := strings.TrimSpace(asset.Name)
+		if name == "" {
+			continue
+		}
+		lower := strings.ToLower(name)
+		sidecar := false
+		for _, suffix := range assetSidecarSuffixes {
+			if strings.HasSuffix(lower, suffix) {
+				sidecar = true
+				break
+			}
+		}
+		if sidecar {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// newAssetDiagnostics는 현재 플랫폼에 맞는 릴리스 에셋을 선택하지 못한 이유를
+// 설명하는 진단 정보를 만듭니다.
+func newAssetDiagnostics(assets []ghAsset) *pkg.AssetDiagnostics {
+	return &pkg.AssetDiagnostics{
+		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
+		Available: installableAssetNames(assets),
+	}
 }
 
 func (g *GitHubRegistry) isTrustedOwner(pkgName string) bool {

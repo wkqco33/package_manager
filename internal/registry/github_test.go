@@ -413,3 +413,87 @@ func TestGitHubRegistry_GetMetadataKeepsAuthFailureForPrivateRepo(t *testing.T) 
 		t.Fatal("Expected GetMetadata to fail for a private repository")
 	}
 }
+
+// TestGitHubRegistry_GetMetadataRecordsAssetDiagnostics는 현재 플랫폼에 맞는
+// 에셋이 없어 소스 tarball로 폴백할 때, 감지된 플랫폼과 릴리스에 존재하는
+// 설치 가능한 에셋 목록을 함께 기록하는지 검증합니다.
+func TestGitHubRegistry_GetMetadataRecordsAssetDiagnostics(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/releases/latest":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{
+				"tag_name": "v0.2.0",
+				"tarball_url": "https://example.com/source.tar.gz",
+				"assets": [
+					{"id": 1, "name": "tool_plan9_mips.tar.gz", "browser_download_url": "https://example.com/tool_plan9_mips.tar.gz"},
+					{"id": 2, "name": "tool_plan9_mips.tar.gz.sha256", "browser_download_url": "https://example.com/tool_plan9_mips.tar.gz.sha256"},
+					{"id": 3, "name": "tool_js_wasm.zip", "browser_download_url": "https://example.com/tool_js_wasm.zip"}
+				]
+			}`)
+		case "/repos/owner/repo/contents/ppm.json":
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	g := &GitHubRegistry{URL: server.URL}
+	p, err := g.GetMetadata("owner/repo")
+	if err != nil {
+		t.Fatalf("GetMetadata failed: %v", err)
+	}
+	if !p.SourceFallback {
+		t.Fatal("expected a source tarball fallback")
+	}
+	if p.AssetDiagnostics == nil {
+		t.Fatal("expected asset diagnostics to explain why the asset was rejected")
+	}
+	if want := runtime.GOOS + "/" + runtime.GOARCH; p.AssetDiagnostics.Platform != want {
+		t.Errorf("Platform = %q, want %q", p.AssetDiagnostics.Platform, want)
+	}
+	want := []string{"tool_js_wasm.zip", "tool_plan9_mips.tar.gz"}
+	got := p.AssetDiagnostics.Available
+	if len(got) != len(want) {
+		t.Fatalf("Available = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Available = %v, want %v", got, want)
+		}
+	}
+}
+
+// 플랫폼 에셋을 찾은 정상 설치 경로에서는 진단 정보를 남기지 않아야 합니다.
+func TestGitHubRegistry_GetMetadataOmitsAssetDiagnosticsOnSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/releases/latest":
+			w.Header().Set("Content-Type", "application/json")
+			assetName := fmt.Sprintf("tool_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+			fmt.Fprintf(w, `{
+				"tag_name": "v1.0.0",
+				"tarball_url": "https://example.com/source.tar.gz",
+				"assets": [{"id": 1, "name": "%s", "browser_download_url": "https://example.com/%s"}]
+			}`, assetName, assetName)
+		case "/repos/owner/repo/contents/ppm.json":
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	g := &GitHubRegistry{URL: server.URL}
+	p, err := g.GetMetadata("owner/repo")
+	if err != nil {
+		t.Fatalf("GetMetadata failed: %v", err)
+	}
+	if p.SourceFallback {
+		t.Fatal("expected a release asset to be selected")
+	}
+	if p.AssetDiagnostics != nil {
+		t.Errorf("AssetDiagnostics = %+v, want nil", p.AssetDiagnostics)
+	}
+}

@@ -39,6 +39,50 @@ type Package struct {
 	BinName               string            `json:"bin_name"` // 실제 바이너리 이름 (레포지토리 이름과 다를 경우)
 	Dependencies          []string          `json:"dependencies,omitempty"`
 	DependencyConstraints map[string]string `json:"dependency_constraints,omitempty"`
+
+	// AssetDiagnostics는 릴리스 에셋을 선택하지 못하고 소스 tarball로
+	// 폴백한 이유를 설명하는 진단 정보입니다. 설치 실패 메시지를 구체화하기
+	// 위한 값이므로 ppm-meta.json과 ppm.lock에는 직렬화하지 않습니다.
+	AssetDiagnostics *AssetDiagnostics `json:"-" yaml:"-"`
+}
+
+// AssetDiagnostics는 릴리스 에셋 선택 실패의 진단 정보입니다.
+type AssetDiagnostics struct {
+	// Platform은 에셋을 선택할 때 사용한 런타임 플랫폼(예: darwin/arm64)입니다.
+	Platform string
+	// Available은 릴리스에 존재하는 설치 가능한 에셋 이름 목록입니다.
+	Available []string
+}
+
+// maxDiagnosticAssets는 오류 메시지에 나열할 에셋 개수 상한입니다.
+const maxDiagnosticAssets = 10
+
+// sourceFallbackMessage는 소스 tarball 폴백이 거부된 이유를 사용자가 바로
+// 이해할 수 있게 설명합니다. 진단 정보가 있으면 감지된 플랫폼과 릴리스 에셋
+// 목록을 함께 보여주어 인증 오류와 혼동하지 않도록 합니다.
+func sourceFallbackMessage(p *Package) string {
+	hint := "소스 tarball 설치는 --from-source 옵션(신뢰할 수 있는 저장소만)으로 허용할 수 있습니다"
+
+	diagnostics := p.AssetDiagnostics
+	if diagnostics == nil || diagnostics.Platform == "" {
+		return fmt.Sprintf("%s %s: 릴리스 에셋을 찾지 못해 소스 tarball로 폴백했습니다; %s", p.Name, p.Version, hint)
+	}
+
+	if len(diagnostics.Available) == 0 {
+		return fmt.Sprintf("%s %s: %s용 릴리스 에셋이 없습니다. 릴리스에 설치 가능한 에셋이 없습니다; %s", p.Name, p.Version, diagnostics.Platform, hint)
+	}
+
+	listed := diagnostics.Available
+	omitted := 0
+	if len(listed) > maxDiagnosticAssets {
+		omitted = len(listed) - maxDiagnosticAssets
+		listed = listed[:maxDiagnosticAssets]
+	}
+	summary := strings.Join(listed, ", ")
+	if omitted > 0 {
+		summary = fmt.Sprintf("%s 외 %d개", summary, omitted)
+	}
+	return fmt.Sprintf("%s %s: %s용 릴리스 에셋이 없습니다. 릴리스에 있는 에셋: %s; %s", p.Name, p.Version, diagnostics.Platform, summary, hint)
 }
 
 // Validate는 패키지 구조체의 필수 필드들의 유효성을 검증합니다.
@@ -108,7 +152,7 @@ func InstallWithPackageOptions(p *Package, fetcher RegistryFetcher, archiver Arc
 		return err
 	}
 	if p.SourceFallback && !options.AllowSourceBuild {
-		return apperr.New(apperr.CodeArchive, "release asset for %s was not found; refusing to install the source tarball (use --from-source only for trusted repositories)", p.Name)
+		return apperr.New(apperr.CodeArchive, "%s", sourceFallbackMessage(p))
 	}
 
 	// 이미 설치됐는지 확인
