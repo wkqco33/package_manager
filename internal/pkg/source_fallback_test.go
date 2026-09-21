@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/wkqco33/package_manager/internal/apperr"
+	"github.com/wkqco33/package_manager/internal/config"
 )
 
 // 소스 tarball 폴백이 거부될 때 사용자가 인증 문제와 혼동하지 않도록
@@ -152,5 +153,28 @@ func TestInstallWithPackageOptionsAllowsSourceFallbackWhenEnabled(t *testing.T) 
 	}
 	if !archiver.extracted || !archiver.linked {
 		t.Error("source fallback install must extract and link the archive")
+	}
+}
+
+// setupTempHome은 실제 사용자 홈이 아니라 테스트별 임시 홈을 사용해야 합니다.
+// XDG_CONFIG_HOME/PPM_CONFIG_DIR이 설정된 CI 러너에서 이 격리가 깨지면 모든
+// 테스트가 러너의 실제 패키지 디렉터리를 공유해 순서에 따라 실패합니다.
+func TestSetupTempHomeIsolatesPackageDirectory(t *testing.T) {
+	home := setupTempHome(t)
+
+	packagesDir, err := config.GetPackagesDir()
+	if err != nil {
+		t.Fatalf("GetPackagesDir() error = %v", err)
+	}
+	if !strings.HasPrefix(packagesDir, home) {
+		t.Errorf("packages dir %q must be under the isolated home %q", packagesDir, home)
+	}
+
+	cacheDir, err := config.GetCacheDir()
+	if err != nil {
+		t.Fatalf("GetCacheDir() error = %v", err)
+	}
+	if !strings.HasPrefix(cacheDir, home) {
+		t.Errorf("cache dir %q must be under the isolated home %q", cacheDir, home)
 	}
 }

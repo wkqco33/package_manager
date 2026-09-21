@@ -20,6 +20,17 @@ func TestInstallWithPackageUsesRealTarArchiver(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("APPDATA", "")
+	// platform.GetPaths()는 HOME보다 명시적 경로 재정의를 우선하므로 함께 비워야
+	// CI 러너에서 러너의 실제 패키지 디렉터리를 공유하지 않습니다.
+	for _, name := range []string{
+		"PPM_CONFIG_DIR",
+		"PPM_INSTALL_DIR",
+		"PPM_CACHE_DIR",
+		"XDG_CONFIG_HOME",
+		"XDG_CACHE_HOME",
+	} {
+		t.Setenv(name, "")
+	}
 
 	installPath := t.TempDir()
 	fetcher := &integrationFetcher{

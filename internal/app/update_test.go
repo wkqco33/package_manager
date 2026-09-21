@@ -24,9 +24,7 @@ func (updateFetcher) DownloadSource(*pkg.Package) (io.ReadCloser, int64, error) 
 }
 
 func TestPackageUpdaterUpdatesDependenciesAndReportsResult(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
-	t.Setenv("APPDATA", "")
+	isolateTestHome(t)
 
 	fetcher := updateFetcher{packages: map[string]*pkg.Package{
 		"owner/app": {Name: "owner/app", Version: "v2.0.0", Source: "app.tar.gz", Dependencies: []string{"owner/dep"}},
@@ -189,9 +187,7 @@ func TestPackageUpdaterCheckPropagatesError(t *testing.T) {
 }
 
 func TestPackageUpdaterUpdatePrefetchesConcurrently(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
-	t.Setenv("APPDATA", "")
+	isolateTestHome(t)
 
 	var (
 		currentConcurrency     int32

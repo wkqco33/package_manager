@@ -84,8 +84,7 @@ func TestAppsInstallerEmptyTargets(t *testing.T) {
 }
 
 func TestAppsInstallerDryRun(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
+	isolateTestHome(t)
 
 	fetcher := &mockAppsFetcher{
 		metadataMap: map[string]*pkg.Package{
@@ -122,8 +121,7 @@ func TestAppsInstallerDryRun(t *testing.T) {
 }
 
 func TestAppsInstallerConcurrentExecution(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
+	isolateTestHome(t)
 
 	fetcher := &mockAppsFetcher{
 		delay: 10 * time.Millisecond,
@@ -169,8 +167,7 @@ func TestAppsInstallerConcurrentExecution(t *testing.T) {
 }
 
 func TestAppsInstallerPartialFailure(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("USERPROFILE", t.TempDir())
+	isolateTestHome(t)
 
 	fetcher := &mockAppsFetcher{
 		failMetadata: map[string]bool{
