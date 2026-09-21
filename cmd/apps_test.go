@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,16 +15,18 @@ import (
 
 // isolateTestHome은 테스트별 임시 홈을 사용하도록 모든 경로 환경 변수를 격리합니다.
 // platform.GetPaths()는 HOME보다 APPDATA·LOCALAPPDATA·PPM_CONFIG_DIR·XDG_CONFIG_HOME
-// 같은 명시적 경로를 우선하므로 이를 비우지 않으면, 해당 변수가 설정된 CI 러너에서
-// 모든 테스트가 실제 홈·캐시 디렉터리를 공유해 실행 순서에 따라 서로 간섭합니다.
+// 같은 명시적 경로를 우선하므로, APPDATA·LOCALAPPDATA는 임시 홈 하위 경로로 명시하고
+// 나머지는 비웁니다. 그렇지 않으면 해당 변수가 설정된 CI 러너에서 모든 테스트가 실제
+// 홈·캐시 디렉터리를 공유해 실행 순서에 따라 서로 간섭합니다.
+// (LOCALAPPDATA를 비우면 Go 도구체인이 GOCACHE를 찾지 못하므로 비우지 않습니다.)
 func isolateTestHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
 	for _, name := range []string{
-		"APPDATA",
-		"LOCALAPPDATA",
 		"PPM_CONFIG_DIR",
 		"PPM_INSTALL_DIR",
 		"PPM_CACHE_DIR",

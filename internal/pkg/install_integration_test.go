@@ -19,12 +19,14 @@ func TestInstallWithPackageUsesRealTarArchiver(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	// platform.GetPaths()는 HOME보다 APPDATA·LOCALAPPDATA·PPM_CONFIG_DIR·
-	// XDG_CONFIG_HOME 같은 명시적 경로를 우선하므로 함께 비워야 CI 러너에서
-	// 러너의 실제 홈·캐시 디렉터리를 공유하지 않습니다.
+	// Windows는 APPDATA·LOCALAPPDATA에서 설정·캐시 경로를 파생하고, Go 도구체인도
+	// %LocalAppData%에서 GOCACHE를 찾으므로 임시 홈 하위 경로로 명시해 격리합니다.
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
+	// platform.GetPaths()는 HOME보다 PPM_CONFIG_DIR·XDG_CONFIG_HOME 같은 명시적
+	// 재정의를 우선하므로 함께 비워야 CI 러너에서 러너의 실제 홈·캐시 디렉터리를
+	// 공유하지 않습니다.
 	for _, name := range []string{
-		"APPDATA",
-		"LOCALAPPDATA",
 		"PPM_CONFIG_DIR",
 		"PPM_INSTALL_DIR",
 		"PPM_CACHE_DIR",

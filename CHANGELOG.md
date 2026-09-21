@@ -20,7 +20,8 @@
 ### 테스트 (Tests)
 
 - **테스트 경로 환경 격리 보강 ([package_test.go](internal/pkg/package_test.go), [install_integration_test.go](internal/pkg/install_integration_test.go), [apps_test.go](cmd/apps_test.go), [apps_test.go](internal/app/apps_test.go), [update_test.go](internal/app/update_test.go), [install_test.go](internal/app/install_test.go))**
-  - `platform.GetPaths()`는 `HOME`보다 `APPDATA`·`LOCALAPPDATA`·`PPM_CONFIG_DIR`·`XDG_CONFIG_HOME` 같은 명시적 경로를 우선하므로, 테스트 헬퍼가 이 변수들도 함께 비우도록 수정했습니다.
+  - `platform.GetPaths()`는 `HOME`보다 `APPDATA`·`LOCALAPPDATA`·`PPM_CONFIG_DIR`·`XDG_CONFIG_HOME` 같은 명시적 경로를 우선하므로, 테스트 헬퍼가 이 변수들을 모두 격리하도록 수정했습니다.
+  - `APPDATA`·`LOCALAPPDATA`는 임시 홈 하위 경로로 명시하고(비우면 Go 도구체인이 `GOCACHE`를 찾지 못합니다), `PPM_*`·`XDG_*`는 비웁니다.
   - 그렇지 않으면 해당 변수가 설정된 CI 러너에서 모든 테스트가 러너의 실제 홈·캐시 디렉터리를 공유해, 이전 실행의 잔여물 때문에 실행 순서에 따라 실패했습니다.
   - 패키지 디렉터리와 캐시 디렉터리가 격리된 임시 홈 아래에 있는지 검증하는 테스트를 추가했습니다.
 
